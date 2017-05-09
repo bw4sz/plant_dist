@@ -1,0 +1,109 @@
+---
+title: "Gesneriaceae Visitor Overlap"
+author: "Ben Weinstein"
+date: "May 8, 2017"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(knitr)
+opts_chunk$set(echo=F,warning = F,message = F)
+```
+
+## Read in data
+
+```{r}
+#hummingbird interactions
+int<-read.csv("data/HummingbirdInteractions.csv")
+
+int<-int %>% filter(!is.na(ID))
+
+#flower phenology
+fl<-read.csv("data/FlowerTransectClean.csv")
+
+#plant morphology
+morph<-read.csv("data/FlowerMorphology.csv")
+
+#elevation ranges
+elevH<-read.csv("data/HummingbirdElevation.csv")
+elevP<-read.csv("data/PlantElevation.csv")
+
+#Data cleaning 
+int$timestamp<-as.POSIXct(paste(int$Time,int$DateP),format="%H:%M:%S %Y-%m-%d")
+
+#one date error
+int[int$DateP %in% '2013-07-25',"Month"]<-7
+
+#one duplicate camera error, perhaps two GPS records.
+int<-int[!(int$ID %in% "FH1108" & int$Date_F %in% '2014-12-01'),]
+
+#Correct known taxonomic disagreements, atleast compared to traits
+int[int$Iplant_Double=="Alloplectus purpureus","Iplant_Double"]<-"Glossoloma purpureum"
+int[int$Iplant_Double=="Capanea affinis","Iplant_Double"]<-"Kohleria affinis"
+int[int$Iplant_Double=="Columnea cinerea","Iplant_Double"]<-"Columnea mastersonii"
+int[int$Iplant_Double=="Alloplectus teuscheri","Iplant_Double"]<-"Drymonia teuscheri"
+
+fl[fl$Iplant_Double=="Alloplectus tetragonoides","Iplant_Double"]<-"Drymonia collegarum"
+
+#use effective corolla where possible.
+morph$Corolla<-morph$EffectiveCorolla
+
+morph[is.na(morph$Corolla),"Corolla"]<-morph[is.na(morph$Corolla),"TotalCorolla"]
+
+#First row is empty
+morph<-morph[-1,]
+
+morph<-morph %>% select(Iplant_Double=Group.1,TotalCorolla,EffectiveCorolla,Corolla.Width)
+
+#subset phenology data for gesneriaceae, must have atleast 10 records
+fl<-fl %>% select(Date=Date_F,Family,Genus,Species,Iplant_Double,Total_Flowers,Height,Elevation=ele,month,Year) %>% filter(Family=="Gesneriaceae")
+
+tokeep<-fl %>% group_by(Iplant_Double) %>% summarize(n=n()) %>% filter(n>20) %>% .$Iplant_Double
+
+fl<-fl %>% filter(Iplant_Double %in% tokeep) %>% filter(!Species=="")
+fl<-droplevels(fl)
+
+#Combine levels from transect, morph, elev and camera datasets
+fl<-fl %>% filter(Iplant_Double %in% unique(int$Iplant_Double))
+
+int<-int %>% filter(Iplant_Double %in% unique(fl$Iplant_Double)) %>% select(ID,Date=DateP,Iplant_Double,Hummingbird,Sex,Pierce,Elevation=ele,Transect_R)
+
+elevP<-elevP %>% filter(Iplant_Double %in% unique(fl$Iplant_Double)) %>% select(Iplant_Double,Low,m,High)
+
+elevH<-elevH %>% filter(Hummingbird %in% unique(int$Hummingbird)) %>% select(Hummingbird,Low,m,High)
+
+morph<-morph %>% filter(Iplant_Double %in% unique(fl$Iplant_Double))
+```
+
+#Interaction Matrix
+
+Binary network to begin with
+
+```{r}
+int_binary<-int %>% group_by(Hummingbird,Iplant_Double) %>% summarize(n=n())
+int_binary$Obs<-(int_binary$n>0)*1
+
+ggplot(int_binary,aes(x=Iplant_Double,y=Hummingbird,fill=as.factor(Obs))) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))  + labs(x="Plants",fill="Visits") + scale_fill_manual(values=c("black"))
+```
+
+# Plant Overlap in Hummingbird Visitor
+
+```{r}
+hp<-reshape2::acast(int_binary,Iplant_Double~Hummingbird,fill=0)
+ggbiplot::ggbiplot(prcomp(hp),labels=rownames(hp))
+```
+
+# Plant Overlap in Time
+
+```{r,fig.height=10,fig.width=12}
+
+fl$Month<-month.name[fl$month]
+fl$Month<-factor(fl$Month,levels=month.name)
+
+sumf<-fl %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
+
+ggplot(sumf,aes(x=Month,y=n,col=Year)) + geom_point()  + geom_smooth(aes(group=1),span = 0.5) + facet_wrap(~Iplant_Double,scales = "free_y",ncol=3) + theme(axis.text.x=element_text(angle=-90)) + labs("Flowers")
+```
+
