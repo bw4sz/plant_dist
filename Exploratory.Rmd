@@ -7,8 +7,11 @@ output: html_document
 
 ```{r}
 library(ggplot2)
+library(plyr)
 library(dplyr)
+library(e1071)
 library(knitr)
+library(vegan)
 opts_chunk$set(echo=F,warning = F,message = F)
 ```
 
@@ -24,7 +27,7 @@ int<-int %>% filter(!is.na(ID))
 fl<-read.csv("data/FlowerTransectClean.csv")
 
 #plant morphology
-morph<-read.csv("data/FlowerMorphology.csv")
+morph<-read.csv("data/")
 
 #elevation ranges
 elevH<-read.csv("data/HummingbirdElevation.csv")
@@ -60,7 +63,7 @@ morph<-morph %>% select(Iplant_Double=Group.1,TotalCorolla,EffectiveCorolla,Coro
 #subset phenology data for gesneriaceae, must have atleast 10 records
 fl<-fl %>% select(Date=Date_F,Family,Genus,Species,Iplant_Double,Total_Flowers,Height,Elevation=ele,month,Year) %>% filter(Family=="Gesneriaceae")
 
-tokeep<-fl %>% group_by(Iplant_Double) %>% summarize(n=n()) %>% filter(n>20) %>% .$Iplant_Double
+tokeep<-fl %>% group_by(Iplant_Double) %>% dplyr::summarize(n=n()) %>% filter(n>20) %>% .$Iplant_Double
 
 fl<-fl %>% filter(Iplant_Double %in% tokeep) %>% filter(!Species=="")
 fl<-droplevels(fl)
@@ -82,7 +85,7 @@ morph<-morph %>% filter(Iplant_Double %in% unique(fl$Iplant_Double))
 Binary network to begin with
 
 ```{r}
-int_binary<-int %>% group_by(Hummingbird,Iplant_Double) %>% summarize(n=n())
+int_binary<-int %>% group_by(Hummingbird,Iplant_Double) %>% dplyr::summarize(n=n())
 int_binary$Obs<-(int_binary$n>0)*1
 
 ggplot(int_binary,aes(x=Iplant_Double,y=Hummingbird,fill=as.factor(Obs))) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))  + labs(x="Plants",fill="Visits") + scale_fill_manual(values=c("black"))
@@ -92,7 +95,12 @@ ggplot(int_binary,aes(x=Iplant_Double,y=Hummingbird,fill=as.factor(Obs))) + geom
 
 ```{r}
 hp<-reshape2::acast(int_binary,Iplant_Double~Hummingbird,fill=0)
-ggbiplot::ggbiplot(prcomp(hp),labels=rownames(hp))
+
+#no variance
+df_f <- hp[,apply(hp, 2, var, na.rm=TRUE) != 0]
+
+ggbiplot::ggbiplot(prcomp(df_f),labels=rownames(hp)) + coord_cartesian(xlim=c(-2.5,2.5),ylim=c(-2.5,2.5)) + theme_bw()
+ggsave("Biplot.svg")
 ```
 
 # Plant Overlap in Time
@@ -104,6 +112,95 @@ fl$Month<-factor(fl$Month,levels=month.name)
 
 sumf<-fl %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
 
-ggplot(sumf,aes(x=Month,y=n,col=Year)) + geom_point()  + geom_smooth(aes(group=1),span = 0.5) + facet_wrap(~Iplant_Double,scales = "free_y",ncol=3) + theme(axis.text.x=element_text(angle=-90)) + labs("Flowers")
+#TODO fix this ugly function
+#expand empty factor to have a 0 count
+zero_count<-expand.grid(Iplant_Double=unique(sumf$Iplant_Double),Month=unique(sumf$Month),Year=unique(sumf$Year),n=0)
+
+zero_count<-zero_count %>% anti_join(sumf,by=c("Iplant_Double","Month","Year"))
+sumf<-bind_rows(sumf,zero_count)
+ggplot(sumf,aes(x=Month,y=n)) + geom_point(size=2)  + geom_smooth(aes(group=1),span = 0.5,se=F) + facet_wrap(~Iplant_Double,scales = "free_y",ncol=4) + theme(axis.text.x=element_text(angle=-90)) + labs("Flowers") + theme_bw() + ylim(0,NA)
+ggsave("Phenology.svg",height=6,width=10)
 ```
 
+#Describing the phenological strategies
+
+We need measures of plant phenology stragies.
+
+* Disperson: The variance in flowers per month
+* Consistancy: The variance in flowers per month per year
+* Kurtosis: The peakiness of the per year flowering pulse.
+
+To compare species with such difference flowering forms and life history strategies, I think its product to standardize by the total flowers per species
+
+```{r}
+sumfz<-sumf %>% group_by(Iplant_Double) %>% mutate(n=n/sum(n))
+
+firstmeasure<-sumfz %>% group_by(Iplant_Double,Year) %>% summarize(Dispersion=var(n,na.rm=T),Kurtosis=kurtosis(n,na.rm=T))
+
+allmeasures<-sumfz %>% group_by(Iplant_Double,Month) %>% summarize(Variability=var(n,na.rm=T)) %>% summarize(Variability=mean(Variability,na.rm=T)) %>% merge(firstmeasure)
+ggplot(allmeasures) + geom_point(aes(x=Dispersion,y=Kurtosis,col=Iplant_Double)) + facet_wrap(~Year,scales = "free")
+
+firstmeasure_mean<-sumfz %>% group_by(Iplant_Double,Year) %>% summarize(Dispersion=var(n),Kurtosis=kurtosis(n,na.rm=T)) %>% summarise(Dispersion=mean(Dispersion),Kurtosis=mean(Kurtosis,na.rm=T))
+allmeasures_mean<-sumfz %>% group_by(Iplant_Double,Month) %>% summarize(Variability=var(n)) %>% summarize(Variability=mean(Variability,na.rm=T)) %>% merge(firstmeasure_mean)
+
+rownames(allmeasures_mean)<-allmeasures_mean[,1]
+allmeasures_mean<-allmeasures_mean[,-1]
+ggbiplot(prcomp(allmeasures_mean,scale=T,center=T),labels=rownames(allmeasures_mean)) + theme_bw()
+```
+
+# Is the observed pattern non-random with respect to time?
+
+Only the total number of observations are mantained.
+
+We are looking for consistancy in patterns across years.
+
+```{r}
+
+null1<-function(){
+  sumf<-fl %>% mutate(Month=sample(month.name,size=nrow(fl),replace=T)) %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
+  return(sumf)
+}
+out<-list()
+
+for(x in 1:1000){
+  out[[x]]<-data.frame(Iteration=x,null1())
+}
+null1_result<-bind_rows(out)
+
+null1_sum<-null1_result %>% group_by(Month,Year,Iplant_Double) %>% summarize(lower=quantile(n,0.05),upper=quantile(n,0.95)) 
+
+ggplot(null1_sum) + geom_ribbon(aes(ymin=lower,ymax=upper,x=Month,group=Year)) + facet_wrap(~Iplant_Double,scales="free_y") + geom_point(data=sumf,aes(x=Month,y=n,col=as.factor(Year))) + theme_bw() + labs(col="Year")
+
+#Plot as differences.
+null1_diff<-null1_sum %>% merge(sumf) %>% mutate(lower=n-lower,upper=n-upper)
+ggplot(null1_diff) + geom_ribbon(aes(ymin=lower,ymax=upper,x=Month,group=Year),alpha=0.4) + facet_wrap(~Iplant_Double,scales="free_y",ncol=3) + theme_bw() + labs(col="Year") + geom_hline(yintercept=0,linetype="dashed",col='red',size=1.1) + scale_x_discrete(labels=month.abb)
+ggsave("Figures/Null1.svg")
+ggsave("Figures/Null1.jpeg",height=6,width=10)
+```
+
+Blooming pattern is non-random with respect to time.
+
+# Is the observed pattern non-random with respect to time and plant abundance.
+
+```{r}
+null2<-function(){
+  sumf<-fl %>% group_by(Iplant_Double) %>% mutate(Month=sample(Month)) %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
+  return(sumf)
+}
+out<-list()
+
+for(x in 1:1000){
+  out[[x]]<-data.frame(Iteration=x,null2())
+}
+null2_result<-bind_rows(out)
+
+null2_sum<-null2_result %>% group_by(Month,Year,Iplant_Double) %>% summarize(lower=quantile(n,0.05),upper=quantile(n,0.95)) 
+
+ggplot(null2_sum) + geom_ribbon(aes(ymin=lower,ymax=upper,x=Month,group=Year)) + facet_wrap(~Iplant_Double,scales="free_y") + geom_point(data=sumf,aes(x=Month,y=n,col=as.factor(Year))) + theme_bw() + labs(col="Year")
+
+#Plot as differences.
+null2_diff<-null2_sum %>% merge(sumf) %>% mutate(lower=n-lower,upper=n-upper)
+ggplot(null2_diff) + geom_ribbon(aes(ymin=lower,ymax=upper,x=Month,group=Year),alpha=0.4) + facet_wrap(~Iplant_Double,scales="free_y",ncol=3) + theme_bw() + labs(col="Year") + geom_hline(yintercept=0,linetype="dashed",col='red',size=1.1) + scale_x_discrete(labels=month.abb)
+ggsave("Figures/null2.svg")
+ggsave("Figures/null2.jpeg",height=6,width=10)
+```
