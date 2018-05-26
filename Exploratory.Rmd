@@ -6,13 +6,18 @@ output: html_document
 ---
 
 ```{r}
+library(knitr)
+opts_chunk$set(echo=F,warning = F,message = F)
+```
+
+```{r}
 library(ggplot2)
 library(plyr)
 library(dplyr)
 library(e1071)
-library(knitr)
+library(ggbiplot)
+library(anytime)
 library(vegan)
-opts_chunk$set(echo=F,warning = F,message = F)
 ```
 
 ## Read in data
@@ -27,7 +32,8 @@ int<-int %>% filter(!is.na(ID))
 fl<-read.csv("data/FlowerTransectClean.csv")
 
 #plant morphology
-morph<-read.csv("data/")
+morph<-read.csv("data/Species_SantaLucia.csv")
+#TODO rename rows
 
 #elevation ranges
 elevH<-read.csv("data/HummingbirdElevation.csv")
@@ -182,9 +188,9 @@ Blooming pattern is non-random with respect to time.
 
 # Is the observed pattern non-random with respect to time and plant abundance.
 
-```{r}
+```{r,eval=F}
 null2<-function(){
-  sumf<-fl %>% group_by(Iplant_Double) %>% mutate(Month=sample(Month)) %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
+  sumf<-fl %>% group_by(Iplant_Double) %>% mutate(Month=sample(month.name,size=nrow(.),replace=T)) %>% group_by(Iplant_Double,Month,Year) %>% dplyr::summarize(n=n())
   return(sumf)
 }
 out<-list()
