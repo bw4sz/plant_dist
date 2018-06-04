@@ -1,0 +1,485 @@
+---
+title: "Co-flowering and hummingbird overlap in Neotropical Gesneriaceae: Predicting Phenology"
+author: "Ben Weinstein"
+date: "6/4/2018"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r,message=F,warning=F,include=F}
+library(knitr)
+opts_chunk$set(message=F,warning=F,echo=F)
+library(lubridate)
+library(ape)
+library(tidyr)
+library(kableExtra)
+library(boot)
+library(dplyr)
+library(ggplot2)
+library(phytools)
+library(stringr)
+library(splines)
+library(R2jags)
+
+#optionally load
+#load("/Users/ben/Dropbox/Gesner/Phenology.RData")
+
+#holder for models and chains
+models<-list()
+chains<-list()
+discrepancy<-list()
+```
+# Transects
+```{r}
+#transects
+transects<-read.csv("data/cleaned/transects.csv",row.names=1)
+head(transects) %>% kable() %>% kable_styling()
+
+```
+
+# Phylogeny
+
+```{r}
+phy<-read.newick("data/SantaLucia_tree_Newick")
+species<-str_match(phy$tip.label,"_(\\w+)")[,2]
+tspecies<-unique(transects$Plant)
+to_join<-data.frame(Plant=tspecies,phylo=str_match(tspecies," (\\w+)")[,2])
+new_names<-data.frame(phylo=species) %>% inner_join(to_join)
+phy$tip.label<- as.character(new_names$Plant)
+plot(phy)
+
+#variance covariance matrix - attraction
+vcov<-vcv(phy,corr = T)
+
+#variance covariance matrix - attraction
+ivcov<-solve(vcov)
+
+#Identity matrix
+I<-diag(nrow(vcov))
+```
+
+### Total Flowers
+
+```{r,fig.height=20}
+transects %>% group_by(Plant,Year) %>%
+ggplot(.,aes(x=julian,y=Flowers,col=as.factor(Year))) + geom_point(size=0.1) + geom_line(aes(group=Year)) + facet_wrap(~Plant,scales="free",ncol=2) + labs(col="Year") + theme_bw()
+```
+
+Peak date
+
+```{r}
+transects %>% group_by(Plant,Year) %>% filter(Flowers==max(Flowers)) %>% summarize(julian=mean(julian)) %>% arrange(Plant,Year) %>% ggplot(.,aes(x=Plant,y=julian,col=as.factor(Year))) + geom_point(size=3) + theme_bw() + coord_flip() + labs(x="Plant",y="Julian Day of Peak Flowering",col="Year") 
+```
+
+
+#Count model of species phenology
+
+## Infer absences
+
+```{r,fig.height=15}
+sumf<-transects %>% group_by(Plant,Date,julian,Year) %>% dplyr::summarize(n=n()) %>% mutate(Year=as.factor(Year))
+zero_count<-expand.grid(Plant=unique(sumf$Plant),Date=unique(sumf$Date),n=0)
+zero_count<-zero_count %>% anti_join(sumf,by=c("Plant","Date")) %>% mutate(Year=chron::years(as.POSIXct(Date)),julian=yday(as.POSIXct(Date)))
+transects_zero<-bind_rows(sumf,zero_count)
+
+#transects_zero %>% group_by(Plant,Year) %>%
+#ggplot(.,aes(x=as.numeric(julian),y=n,col=as.factor(Year))) + geom_point(size=0.1) + #geom_line(aes(group=as.factor(Year))) + facet_wrap(~Plant,scales="free",ncol=3) + labs(col="Year") + theme_bw()
+
+transects_zero %>% group_by(Plant,Year)  %>% filter(!is.na(n)) %>%
+ggplot(.,aes(x=julian,y=n,col=as.factor(Year))) + stat_smooth() + facet_wrap(~Plant,scales="free",ncol=3) + labs(col="Year") + theme_bw()
+```
+
+## Julian Day
+
+```{r,fig.height=15}
+#prepare data
+indat<-transects_zero
+
+ggplot(indat,aes(x=julian,y=n)) + geom_point() + facet_wrap(~Plant,scales="free",ncol=3)
+
+#Easiest to work with jags as numeric ordinal values
+indat$Plant<-as.factor(indat$Plant)
+indat$jPlant<-as.numeric(indat$Plant)
+
+jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
+```
+
+```{r}
+#Source model
+source("model/julian.R")
+
+#print model
+writeLines(readLines("model/julian.R"))
+
+#Run Model
+runModel<-function(Yobs_dat){
+  
+  
+  #Parameters to track
+  ParsStage <- c("alpha","beta","beta2")
+  
+  #Jags Data
+
+
+  Dat<-list(
+    Yobs=Yobs_dat$n,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    julian=Yobs_dat$julian,
+    Nobs=length(Yobs_dat$n))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$julian<-runModel(Yobs_dat=indat)
+```
+
+#Get Chains
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+  #single index
+  splitpc[c("alpha","beta","beta2")]<-lapply(
+    splitpc[c("alpha","beta","beta2")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jPlant=sv)
+    })
+  
+    
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r}
+chains$julian<-getChains(models$julian) %>% inner_join(jagsIndexPlants)
+```
+
+### Evaluate convergence
+
+```{r,fig.height=15,fig.width=20}
+ggplot(chains$julian,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+```
+
+### Posterior estimates
+```{r}
+ggplot(chains$julian,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
+```
+
+### Effect of Julian day
+
+```{r}
+
+predict_plant<-function(alpha,beta,beta2,julian){
+  result<-exp(alpha + beta * julian + beta2 * julian^2)
+  return(data.frame(alpha,beta,beta2,julian,value=result))
+}
+
+days_to_predict<-unique(indat$julian)
+preds<-chains$julian %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict)) %>% group_by(Plant,julian) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(preds,aes(x=julian,y=mean))  + geom_ribbon(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,ncol=4,scales="free") + labs(y="Flowering Intensity") + theme_bw()
+```
+
+```{r}
+### Compute discrepancy
+discrepancy$julian<-chains$julian %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict))  %>% ungroup() %>% inner_join(indat[,c("Plant","julian","n")],by=c("Plant","julian")) %>% mutate(Discrepancy=abs(n-value))
+```
+
+## Julian + Phylogenetic Attraction
+
+```{r}
+#filter data to match phylogeny
+indat<-indat %>% filter(Plant %in% phy$tip.label)
+indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
+indat$jPlant<-as.numeric(indat$Plant)
+jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
+
+```
+
+```{r}
+#Source model
+source("model/julian_phylogeny.R")
+
+#print model
+writeLines(readLines("model/julian_phylogeny.R"))
+
+#Run Model
+runModel<-function(Yobs_dat,I=I,vcov=vcov){
+  
+  
+  #Parameters to track
+  ParsStage <- c("alpha","beta","beta2","lambda","sigma","sigma2")
+  
+  InitState<- function(){
+    list(
+    beta = dat$zeros,
+    beta2 = dat$zeros
+    )
+  }
+  
+  #Jags Data
+
+  Dat<-list(
+    Yobs=Yobs_dat$n,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    julian=Yobs_dat$julian,
+    Nobs=length(Yobs_dat$n),
+    I=I,
+    vcov=vcov,
+    zeros=rep(0,max(c(Yobs_dat$jPlant))))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$phylogeny<-runModel(Yobs_dat=indat,I=I,vcov=vcov)
+```
+
+#Get Chains
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+  #single index
+  splitpc[c("alpha","beta","beta2")]<-lapply(
+    splitpc[c("alpha","beta","beta2")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jPlant=sv)
+    })
+  
+    
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r}
+chains$phylogeny<-getChains(models$phylogeny) %>% left_join(jagsIndexPlants)
+```
+
+### Evaluate convergence
+
+```{r}
+chains$phylogeny %>% filter(parameter %in% c("sigma2","sigma","lambda")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=1) + theme_bw() + labs(col="Chain")
+```
+
+```{r,fig.height=15,fig.width=20}
+chains$phylogeny %>% filter(!parameter %in% c("sigma","sigma2","lambda")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free") + theme_bw() + labs(col="Chain")
+```
+
+### Posterior estimates
+
+```{r}
+ggplot(chains$phylogeny,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+```
+
+### Effect of Julian day
+
+```{r}
+
+predict_plant<-function(alpha,beta,beta2,julian){
+  result<-exp(alpha + beta * julian + beta2 * julian^2)
+  return(data.frame(alpha,beta,beta2,julian,value=result))
+}
+
+days_to_predict<-unique(indat$julian)
+preds<-chains$phylogeny %>% select(-par) %>% spread(parameter,value) %>% filter(!is.na(Plant)) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict)) %>% group_by(Plant,julian) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(preds,aes(x=julian,y=mean))  + geom_ribbon(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,ncol=4,scales="free") + labs(y="Flowering Intensity") + theme_bw()
+```
+
+```{r}
+### Compute discrepancy
+discrepancy$phylogeny<-chains$phylogeny %>% select(-par) %>% filter(!is.na(Plant))  %>% spread(parameter,value) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict))  %>% ungroup() %>% inner_join(indat[,c("Plant","julian","n")],by=c("Plant","julian")) %>% mutate(Discrepancy=abs(n-value))
+```
+
+## Julian + Phylogenetic Repulsion
+
+```{r}
+#filter data to match phylogeny
+indat<-indat %>% filter(Plant %in% phy$tip.label)
+indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
+indat$jPlant<-as.numeric(indat$Plant)
+jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
+
+```
+
+```{r}
+#Source model
+source("model/julian_phylogeny.R")
+
+#print model
+writeLines(readLines("model/julian_phylogeny.R"))
+
+#Run Model
+runModel<-function(Yobs_dat,I=I,vcov=vcov){
+  
+  
+  #Parameters to track
+  ParsStage <- c("alpha","beta","beta2","lambda","sigma","sigma2")
+  
+  InitState<- function(){
+    list(
+    beta = dat$zeros,
+    beta2 = dat$zeros
+    )
+  }
+  
+  #Jags Data
+
+  Dat<-list(
+    Yobs=Yobs_dat$n,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    julian=Yobs_dat$julian,
+    Nobs=length(Yobs_dat$n),
+    I=I,
+    vcov=vcov,
+    zeros=rep(0,max(c(Yobs_dat$jPlant))))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$phylogeny_repulsion<-runModel(Yobs_dat=indat,I=I,vcov=ivcov)
+```
+
+#Get Chains
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+  #single index
+  splitpc[c("alpha","beta","beta2")]<-lapply(
+    splitpc[c("alpha","beta","beta2")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jPlant=sv)
+    })
+  
+    
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r}
+chains$phylogeny_repulsion<-getChains(models$phylogeny_repulsion) %>% left_join(jagsIndexPlants)
+```
+
+### Evaluate convergence
+
+```{r}
+chains$phylogeny_repulsion %>% filter(parameter %in% c("sigma2","sigma","lambda")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=1) + theme_bw() + labs(col="Chain")
+```
+
+```{r,fig.height=15,fig.width=20}
+chains$phylogeny_repulsion %>% filter(!parameter %in% c("sigma2","sigma","lambda")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free") + theme_bw() + labs(col="Chain")
+```
+
+### Posterior estimates
+
+```{r}
+ggplot(chains$phylogeny_repulsion,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+```
+
+### Effect of Julian day
+
+```{r}
+days_to_predict<-unique(indat$julian)
+preds<-chains$phylogeny_repulsion %>% select(-par) %>% spread(parameter,value) %>% filter(!is.na(Plant)) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict)) %>% group_by(Plant,julian) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(preds,aes(x=julian,y=mean))  + geom_ribbon(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,ncol=4,scales="free") + labs(y="Flowering Intensity") + theme_bw()
+```
+
+```{r}
+### Compute discrepancy
+discrepancy$phylogeny_repulsion<-chains$phylogeny_repulsion %>% select(-par) %>% filter(!is.na(Plant))  %>% spread(parameter,value) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict))  %>% ungroup() %>% inner_join(indat[,c("Plant","julian","n")],by=c("Plant","julian")) %>% mutate(Discrepancy=abs(n-value))
+```
+
+# Model Comparison
+
+```{r}
+#reduce models to a single df
+for(x in 1:length(chains)){
+  chains[[x]]$Model<-names(chains)[[x]]
+}
+
+allchains<-bind_rows(chains)
+```
+
+## Effect of julian day
+
+```{r,fig.height=15}
+preds<- allchains %>% select(-par) %>% spread(parameter,value) %>% filter(!is.na(Plant)) %>% group_by(Model,Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict)) %>% group_by(Model,Plant,julian) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(preds,aes(x=julian,y=mean,fill=Model))  + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + facet_wrap(~Plant,ncol=3,scales="free") + labs(y="Flowering Intensity") + theme_bw()
+```
+
+# Model Fit
+
+```{r}
+#reduce models to a single df
+for(x in 1:length(discrepancy)){
+  discrepancy[[x]]$Model<-names(discrepancy)[[x]]
+}
+
+discrepancy<-bind_rows(discrepancy)
+```
+
+## Overall
+
+```{r}
+discrepancy %>% group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+```
+
+## By Species
+
+```{r}
+discrepancy%>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+```
+
+#Prediction
+
+Todo
+
+```{r}
+save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
+```

@@ -1,0 +1,46 @@
+sink("model/intercept_phylogeny.jags")
+cat("
+    model {
+    
+    for (x in 1:Nobs){
+
+    #observation
+    logit(phi[x])<-alpha[Bird[x],Plant[x]] + e[Plant[x]]
+
+    Yobs[x] ~ dbern(phi[x])
+    
+    }
+    
+    #phylogenetic covariance among plants
+    #covert variance to precision
+    tauC[1:Plants,1:Plants]=inverse((sigma^2)*C[,])
+
+    e[1:Plants] ~ dmnorm(zeros[],tauC[,])
+
+    #Effect of phylogeny, calculate pagels lambda using variance-covariance matrix and identity matrix
+    C[1:Plants,1:Plants] = lambda * vcov[,] + (1-lambda) * I[,]
+
+    #Assess Model Fit
+    #Priors
+
+    #Species level priors
+    for (i in 1:Birds){
+      for (j in 1:Plants){
+
+        #Intercept
+        #logit prior, then transform for plotting
+        alpha[i,j] ~ dnorm(0,0.386)
+      } 
+    }
+
+    #pagels lambda
+    lambda ~ dbeta(1,1)
+
+    #variance in phylogenetic effect
+    sigma ~ dunif(0,10)
+
+    
+    }
+    ",fill=TRUE)
+
+sink()

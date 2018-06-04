@@ -2,7 +2,9 @@
 title: "Gesneriaceae Visitor Overlap"
 author: "Ben Weinstein"
 date: "May 8, 2017"
-output: html_document
+  html_document:
+    number_sections: true
+    toc: true
 ---
 
 ```{r}
