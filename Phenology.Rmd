@@ -62,6 +62,17 @@ ivcov<-solve(vcov)
 I<-diag(nrow(vcov))
 ```
 
+# Traits
+```{r}
+traits<-read.csv("data/Species_SantaLucia.csv")
+
+#improve column names
+traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length=Lc,vertical_diameter=D,stamen_length=S,stamen_exertion=E)
+
+#order the factors
+head(transects) %>% kable() %>% kable_styling()
+```
+
 ### Total Flowers
 
 ```{r,fig.height=20}
@@ -134,7 +145,7 @@ runModel<-function(Yobs_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -206,7 +217,7 @@ discrepancy$julian<-chains$julian %>% select(-par) %>% spread(parameter,value) %
 
 ```{r}
 #filter data to match phylogeny
-indat<-indat %>% filter(Plant %in% phy$tip.label)
+indat<-transects_zero %>% filter(Plant %in% phy$tip.label)
 indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
 indat$jPlant<-as.numeric(indat$Plant)
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
@@ -215,10 +226,10 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 
 ```{r}
 #Source model
-source("model/julian_phylogeny.R")
+source("model/julian_phylogeny2.R")
 
 #print model
-writeLines(readLines("model/julian_phylogeny.R"))
+writeLines(readLines("model/julian_phylogeny2.R"))
 
 #Run Model
 runModel<-function(Yobs_dat,I=I,vcov=vcov){
@@ -248,7 +259,7 @@ runModel<-function(Yobs_dat,I=I,vcov=vcov){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny2.jags",n.thin=1,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -334,10 +345,10 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 
 ```{r}
 #Source model
-source("model/julian_phylogeny.R")
+source("model/julian_phylogeny2.R")
 
 #print model
-writeLines(readLines("model/julian_phylogeny.R"))
+writeLines(readLines("model/julian_phylogeny2.R"))
 
 #Run Model
 runModel<-function(Yobs_dat,I=I,vcov=vcov){
@@ -367,7 +378,7 @@ runModel<-function(Yobs_dat,I=I,vcov=vcov){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/julian_phylogeny2.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -434,6 +445,7 @@ ggplot(preds,aes(x=julian,y=mean))  + geom_ribbon(aes(ymin=lower,ymax=upper)) + 
 discrepancy$phylogeny_repulsion<-chains$phylogeny_repulsion %>% select(-par) %>% filter(!is.na(Plant))  %>% spread(parameter,value) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict))  %>% ungroup() %>% inner_join(indat[,c("Plant","julian","n")],by=c("Plant","julian")) %>% mutate(Discrepancy=abs(n-value))
 ```
 
+
 # Model Comparison
 
 ```{r}
@@ -443,11 +455,18 @@ for(x in 1:length(chains)){
 }
 
 allchains<-bind_rows(chains)
+
+#create an attraction/repulsion label
+allchains$Effect<-str_detect(allchains$Model,"repulsion")
+
+allchains[allchains$Effect==TRUE,"Effect"]<-"Repulsion"
+allchains[!allchains$Effect==TRUE,"Effect"]<-"Attraction"
+
 ```
 
 ## Effect of julian day
 
-```{r,fig.height=15}
+```{r,fig.height=12,fig.width=12}
 preds<- allchains %>% select(-par) %>% spread(parameter,value) %>% filter(!is.na(Plant)) %>% group_by(Model,Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$beta,.$beta2,julian=days_to_predict)) %>% group_by(Model,Plant,julian) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(preds,aes(x=julian,y=mean,fill=Model))  + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + facet_wrap(~Plant,ncol=3,scales="free") + labs(y="Flowering Intensity") + theme_bw()
@@ -462,12 +481,25 @@ for(x in 1:length(discrepancy)){
 }
 
 discrepancy<-bind_rows(discrepancy)
+
+#create an attraction/repulsion label
+discrepancy$effect<-str_detect(discrepancy$Model,"repulsion")
+discrepancy[!discrepancy$effect==TRUE,"effect"]<-"Attraction"
+discrepancy[discrepancy$effect==TRUE,"effect"]<-"Repulsion"
+
+#Julian gets no label
+discrepancy[discrepancy$Model=="julian","effect"]<-""
+
+#label variable
+v<-data.frame(Model=c("julian","phylogeny","phylogeny_repulsion"),variable=c("Julian","Phylogeny","Phylogeny"))
+
+discrepancy<-discrepancy %>% inner_join(v) 
 ```
 
 ## Overall
 
 ```{r}
-discrepancy %>% group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+discrepancy %>% group_by(variable,effect) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=variable,y=mean,col=effect)) + geom_pointrange(aes(ymin=lower,ymax=upper),position = position_dodge(width=0.2)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
 ## By Species
@@ -475,6 +507,7 @@ discrepancy %>% group_by(Model) %>% summarize(mean=mean(value),lower=quantile(va
 ```{r}
 discrepancy%>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
+
 
 #Prediction
 
