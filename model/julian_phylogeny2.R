@@ -1,4 +1,4 @@
-sink("model/julian_phylogeny2.jags")
+sink("model/julian_decay.jags")
 cat("
     model {
     
@@ -31,8 +31,8 @@ cat("
     ## These terms share everything except for the scaling factor sigma. The phylogenetic signal is the same. 
     ## covert variance to precision for each parameter
 
-    tauC[1:Plants,1:Plants]=inverse((sigma^2)*C[,])
-    tauC2[1:Plants,1:Plants]=inverse((sigma2^2)*C[,])
+    tauC[1:Plants,1:Plants]=inverse(C[,])
+    tauC2[1:Plants,1:Plants]=inverse(C[,])
 
     ## **************************
     ##         Priors
@@ -57,7 +57,6 @@ cat("
     #beta2 term
     sigma2 ~ dunif(0,10)
 
-    
     
     }
     ",fill=TRUE)

@@ -1,0 +1,29 @@
+sink("model/julian.jags")
+cat("
+    model {
+    
+    for (x in 1:Nobs){
+    
+      #observation
+      mu[x]<-alpha[Plant[x]]
+      
+      Yobs[x] ~ dnorm(mu[Plant[x]],sigma[Plant[x]])
+    
+    }
+    
+    
+    #Assess Model Fit
+    #Priors
+    
+    #Species level priors
+    
+    for (j in 1:Plants){
+    
+    #Intercept
+    alpha[j] ~ dnorm(0,0.0001)
+    } 
+    
+    }
+    ",fill=TRUE)
+
+sink()
