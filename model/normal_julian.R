@@ -1,18 +1,29 @@
-sink("model/julian.jags")
+sink("model/normal_julian.jags")
 cat("
     model {
     
     for (x in 1:Nobs){
-    
+
       #observation
-      mu[x]<-alpha[Plant[x]]
+      Yobs[x] ~ dnorm(mu[Plant[x]],tau[Plant[x]])T(0,365)
       
-      Yobs[x] ~ dnorm(mu[Plant[x]],sigma[Plant[x]])
+      #Residuals
+      residuals[x] <- Yobs[x] - mu[Plant[x]]
+      
+      #squared error
+      sq[x]<-pow(residuals[x],2)
+
+      #Assess Model Fit - squared residuals
+      Ynew[x] ~ dnorm(mu[Plant[x]],tau[Plant[x]])T(0,365)
+      sq.new[x]<-pow(Ynew[x] - mu[Plant[x]],2)
     
     }
     
-    
-    #Assess Model Fit
+    #sum of squared error
+    #Root mean squared error
+    fit<-sqrt(sum(sq[])/Nobs)
+    fitnew<-sqrt(sum(sq.new[])/Nobs)
+
     #Priors
     
     #Species level priors
@@ -20,7 +31,11 @@ cat("
     for (j in 1:Plants){
     
     #Intercept
-    alpha[j] ~ dnorm(0,0.0001)
+    mu[j] ~ dnorm(0,0.0001)
+
+    #variance
+    sigma[j] ~ dgamma(0.0001,0.0001)
+    tau[j] <- pow(sigma[j], -2)
     } 
     
     }
