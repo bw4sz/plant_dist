@@ -51,7 +51,7 @@ cat("
     alpha[j] ~ dnorm(0,0.0001)
 
     #variance
-    sigma[j] ~ dgamma(0.0001,0.0001)
+    sigma[j] ~ dunif(0,50)
     tau[j] <- pow(sigma[j], -2)
     } 
 

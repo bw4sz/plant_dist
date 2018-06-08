@@ -27,7 +27,7 @@ library(R2jags)
 library(truncnorm)
 
 #optionally load
-#load("/Users/ben/Dropbox/Gesner/Phenology.RData")
+load("/Users/ben/Dropbox/Gesner/Phenology.RData")
 
 #holder for models and chains
 models<-list()
@@ -135,7 +135,7 @@ runModel<-function(Yobs_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_julian.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_julian.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -254,7 +254,7 @@ runModel<-function(Yobs_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -314,7 +314,7 @@ chains$phylogenetic_attraction %>% filter(parameter %in% c("fit","fitnew","lambd
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$phylogenetic_attraction %>% filter(!par %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
+chains$phylogenetic_attraction %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
 ### Estimated phenology
@@ -377,7 +377,7 @@ runModel<-function(Yobs_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -437,7 +437,7 @@ chains$phylogenetic_repulsion %>% filter(par %in% c("fit","fitnew","lambda","ome
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$phylogenetic_repulsion %>% filter(!par %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
+chains$phylogenetic_repulsion %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
 ### Estimated phenology
@@ -460,7 +460,7 @@ effect_repulsion<-function(lambda,D){
   data.frame(lambda,Distance=as.numeric(D),Covariance=y)
 }
 
-phyrepulse_effect<-chains$phylogenetic_repulsion %>% filter(parameter=="lambda") %>% group_by(Draw,chain) %>% do(effect(.$value,D)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
+phyrepulse_effect<-chains$phylogenetic_repulsion %>% filter(parameter=="lambda") %>% group_by(Draw,chain) %>% do(effect_repulsion(.$value,D)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
 ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
 ```
@@ -512,7 +512,7 @@ runModel<-function(Yobs_dat,D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -572,7 +572,7 @@ chains$trait_attraction %>% filter(par %in% c("fit","fitnew","lambda")) %>%  ggp
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$trait_attraction %>% filter(!par %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
+chains$trait_attraction %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
 ### Estimated phenology
@@ -622,7 +622,7 @@ runModel<-function(Yobs_dat,D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -682,7 +682,7 @@ chains$trait_repulsion %>% filter(par %in% c("fit","fitnew","lambda","omega")) %
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$trait_repulsion %>% filter(!par %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
+chains$trait_repulsion %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
 ### Estimated phenology
@@ -723,9 +723,34 @@ allchains[!allchains$Effect==TRUE,"Effect"]<-"Attraction"
 
 ```
 
+## Alpha
 
-```{r,eval=F}
-allchains %>% filter(!parameter %in% c("sq")) %>% group_by(Model,par) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% data.frame() %>% kable() %>% kable_styling()
+```{r,fig.height=12,fig.width=10}
+allpars<-allchains %>% filter(!parameter %in% c("sq")) %>% group_by(Model,Plant,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+#Alphas
+allpars %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip()
+```
+
+## E: The effect of autocorrelation on mean flowering date
+
+```{r,fig.height=12,fig.width=10}
+allpars %>% filter(parameter %in% "e") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="E")
+```
+
+## Mu
+
+Reconstructed from alpha + E, do the parameters just tradeoff?
+
+```{r,fig.height=12,fig.width=10}
+
+
+#get julian estimate
+jest<-allchains %>% select(-par) %>% filter(Model %in% "julian",parameter %in% c("mu"))%>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) 
+
+allchains %>% select(-par) %>% filter(!Model %in% "julian",parameter %in% c("alpha","e")) %>% spread(parameter,value) %>% mutate(mu=alpha+e) %>% group_by(Model,Plant) %>% summarize(mean=mean(mu),lower=quantile(mu,0.05),upper=quantile(mu,0.95)) %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="mu") + geom_pointrange(data=jest,aes(ymin=lower,ymax=upper),col="red")
+
+
 ```
 
 ### Estimated phenology
@@ -733,11 +758,11 @@ allchains %>% filter(!parameter %in% c("sq")) %>% group_by(Model,par) %>% summar
 Red is the kernel density from the underlying data
 Black is the model
 
-```{r}
+```{r,fig.height=12,fig.width=12}
 #need to compute seperately for julian and the other models
 correlated_predictions<-allchains %>% select(-par) %>% filter(!Model %in% "julian") %>% filter(parameter %in% c("alpha","sigma","e"))  %>% spread(parameter,value) %>% group_by(Model,Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$e,.$sigma)) %>% group_by(Model,Plant,Day) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
-ggplot(correlated_predictions)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper,fill=Model),alpha=0.2) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free") + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
+ggplot(correlated_predictions)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper,fill=Model),alpha=0.2) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
 ```
 
 ## Effect of autocorrelation
@@ -766,19 +791,18 @@ ggplot(est_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 
 ## Bayesian pvalue
 
-```{r}
+```{r,fig.height=10,fig.width=10}
 
 fitstat<-allchains %>% filter(par %in% c("fit","fitnew")) %>% select(-par) %>% mutate(value=value) %>% spread(parameter,value) 
 
 ymin<-min(fitstat$fit)
 ymax<-max(fitstat$fit)
-ab<-data.frame(x=seq(ymin,ymax,0.1),y=seq(ymin,ymax,0.1))
+ab<-data.frame(x=seq(0,ymax,1),y=seq(0,ymax,1))
 
-ggplot(data=fitstat,aes(x=fit,y=fitnew)) + geom_point(aes(col=Model)) + theme_bw() + labs(x="Discrepancy of observed data",y="Discrepancy of replicated data",col="Model")  + ggtitle("Posterior predictive check") + geom_line(data=ab,aes(x=x,y=y),group=1,linetype="dashed") + coord_fixed()
-
+ggplot(data=fitstat,aes(x=fit,y=fitnew)) + geom_point(aes(col=Model)) + theme_bw() + labs(x="Discrepancy of observed data",y="Discrepancy of replicated data",col="Model")  + ggtitle("Posterior predictive check") + coord_fixed() + geom_line(data=ab,aes(x=x,y=y),group=1,linetype="dashed") 
 
 #Bayesian p-value
-sum(fitstat$fitnew>fitstat$fit)/nrow(fitstat)
+fitstat %>% group_by(Model) %>% summarize(p=sum((fitnew>fit)/n()))
 ```
 
 ## Overall
