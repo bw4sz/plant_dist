@@ -4,8 +4,11 @@ cat("
     
     for (x in 1:Nobs){
 
+      #Effect of environment
+      mu[x] <- alpha[Plant[x]] + beta[Plant[x]] * ele[x]
+
       #observation
-      Yobs[x] ~ dnorm(mu[Plant[x]],tau[Plant[x]])T(0,365)
+      Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
       
       #Residuals
       residuals[x] <- Yobs[x] - mu[Plant[x]]
@@ -14,15 +17,29 @@ cat("
       sq[x]<-pow(residuals[x],2)
 
       #Assess Model Fit - squared residuals
-      Ynew[x] ~ dnorm(mu[Plant[x]],tau[Plant[x]])T(0,365)
+      Ynew[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
       sq.new[x]<-pow(Ynew[x] - mu[Plant[x]],2)
     
     }
     
-    #sum of squared error
-    #Root mean squared error
+    #Root mean squared residuals
     fit<-sqrt(sum(sq[])/Nobs)
-    fitnew<-sqrt(sum(sq.new[])/Nobs)
+    fitnew<-sqrt(sum(sq.new[])/Nobs)  
+
+    #Prediction
+
+    for(i in 1:Npreds){
+
+      #predict value
+      mu_new[i]<-alpha[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[Ypred_plant[i]]
+      prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
+    
+      #squared predictive error
+      pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    }
+
+    #Root Mean Squared Predictive Error
+    fitpred<-sqrt(sum(pred_error[])/Npreds)
 
     #Priors
     
@@ -31,10 +48,13 @@ cat("
     for (j in 1:Plants){
     
     #Intercept
-    mu[j] ~ dnorm(0,0.0001)
+    alpha[j] ~ dnorm(0,0.0001)
+  
+    #Effect of elevation
+    beta[j] ~ dnorm(0,0.0001)
 
     #variance
-    sigma[j] ~ dunif(0,50)
+    sigma[j] ~ dunif(0,75)
     tau[j] <- pow(sigma[j], -2)
     } 
     

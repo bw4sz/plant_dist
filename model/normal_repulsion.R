@@ -5,7 +5,7 @@ cat("
     for (x in 1:Nobs){
     
     #observation
-    mu[x] <- alpha[Plant[x]] + e[Plant[x]]
+    mu[x] <- alpha + e[Plant[x]]
     Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
     
     #Residuals
@@ -45,18 +45,34 @@ cat("
     tauC=iiC
     tauC2=iiC
     
+    ###########
+    #Prediction
+    ###########
+
+    for(i in 1:Npreds){
+    
+    #predict value
+    prediction[i] ~ dnorm(mu[Ypred_plant[i]],tau[Ypred_plant[i]])T(0,365)
+    
+    #squared predictive error
+    pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    }
+    
+    #Root Mean Squared Predictive Error
+    fitpred<-sqrt(sum(pred_error[])/Npreds)
+    
     # Priors #
     ##########
+    
+    #Julian Intercept
+    alpha ~ dnorm(0,0.0001)
     
     #Species level priors
     
     for (j in 1:Plants){
     
-    #Intercept
-    alpha[j] ~ dnorm(0,0.0001)
-    
     #variance
-    sigma[j] ~ dunif(0,50)
+    sigma[j] ~ dunif(0,75)
     tau[j] <- pow(sigma[j], -2)
     } 
     
