@@ -40,6 +40,8 @@ discrepancy<-list()
 transects<-read.csv("data/cleaned/transects.csv",row.names=1)
 head(transects) %>% kable() %>% kable_styling()
 
+#drop NA elevations
+transects<-transects %>% filter(!is.na(ele))
 ```
 
 # Phylogeny
@@ -107,12 +109,13 @@ indat$jPlant<-as.numeric(indat$Plant)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
 
-#give each row an index
-indat$Index<-1:nrow(indat)
-
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
+
+#give index positions
+to_predict$Index<-1:nrow(to_predict)
+indat$Index<-1:nrow(indat)
 ```
 
 ```{r}
@@ -148,7 +151,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_julian.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_julian.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -157,7 +160,7 @@ models$julian<-runModel(Yobs_dat=indat,Ynew_dat=to_predict)
 ```
 
 ```{r} 
-getChains<-function(mod){
+getChains<-function(mod,indat,to_predict){
   
   pc<-reshape2::melt(mod$BUGSoutput$sims.array)
   colnames(pc)<-c("Draw","chain","par","value")
@@ -175,9 +178,9 @@ getChains<-function(mod){
     pc<-data.frame(x,jPlant=sv)
     })
   
-  #ragged index
-  splitpc[c("sq","Ynew","prediction")]<-lapply(
-    splitpc[c("sq","Ynew","prediction")],function(x){
+  #ragged index - observed
+  splitpc[c("sq","Ynew")]<-lapply(
+    splitpc[c("sq","Ynew")],function(x){
     #get index
     sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
     
@@ -187,12 +190,25 @@ getChains<-function(mod){
     pc<-data.frame(x,ragged)
     return(pc)
     })
+  
+    #ragged index - prediction
+  splitpc[c("prediction")]<-lapply(
+    splitpc[c("prediction")],function(x){
+    #get index
+    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
+    
+    #merge with indat to get species
+    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
+    
+    pc<-data.frame(x,ragged)
+    return(pc)
+    })
   chains<-bind_rows(splitpc)
 return(chains)}
 ```
 
 ```{r}
-chains$julian<-getChains(models$julian) %>% left_join(jagsIndexPlants)
+chains$julian<-getChains(models$julian,indat,to_predict) %>% left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -219,14 +235,14 @@ Black is the modeled phenology
 
 preds<-chains$julian %>% filter(parameter %in% c("Ynew")) %>% group_by(Plant,Index)
 
-ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=4) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ### Predicted phenology
 
 ```{r,fig.height=11}
 preds<-chains$julian %>% filter(parameter %in% c("prediction")) %>% group_by(Plant,Index)
-ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=4) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 # Phylogeny
@@ -240,12 +256,13 @@ indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
 indat$jPlant<-as.numeric(indat$Plant)
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
 
-#give each row an index
-indat$Index<-1:nrow(indat)
-
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
+
+#give index positions
+to_predict$Index<-1:nrow(to_predict)
+indat$Index<-1:nrow(indat)
 ```
 
 ```{r}
@@ -256,11 +273,11 @@ source("model/normal_attraction.R")
 writeLines(readLines("model/normal_attraction.R"))
 
 #Run Model
-runModel<-function(Yobs_dat,Ynew_dat,D=D){
+runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
   
   
   #Parameters to track
-  ParsStage <- c("alpha","sigma","fit","fitnew","sq","lambda","e","omega","fitpred","beta","Ynew")
+  ParsStage <- c("alpha","sigma","fit","fitnew","sq","lambda","e","omega","fitpred","beta","Ynew","prediction")
   
   #Jags Data
 
@@ -270,26 +287,28 @@ runModel<-function(Yobs_dat,Ynew_dat,D=D){
     Plants=max(c(Yobs_dat$jPlant)),
     Nobs=length(Yobs_dat$julian),
     zeros=rep(0,max(c(Yobs_dat$jPlant))),
+    ele=Yobs_dat$ele,
     D=D,
     
     #Prediction data
     Ypred=Ynew_dat$julian,
     Ypred_plant=Ynew_dat$jPlant,
+    ele_new=Ynew_dat$ele,
     Npreds=length(Ynew_dat$julian))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$phylogenetic_attraction<-runModel(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
+models$phylogenetic_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
 ```
 
 #Get Chains
 ```{r} 
-getChains<-function(mod){
+getChains<-function(mod,indat,to_predict){
   
   pc<-reshape2::melt(mod$BUGSoutput$sims.array)
   colnames(pc)<-c("Draw","chain","par","value")
@@ -301,20 +320,34 @@ getChains<-function(mod){
   splitpc<-split(pc,pc$parameter)
   
   #single index
-  splitpc[c("sigma","e")]<-lapply(
-    splitpc[c("sigma","e")],function(x){
+  splitpc[c("sigma","e","beta")]<-lapply(
+    splitpc[c("sigma","e","beta")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,jPlant=sv)
     })
   
-  #ragged index
-  splitpc[c("sq")]<-lapply(
-    splitpc[c("sq")],function(x){
+  #ragged index - observed
+  splitpc[c("sq","Ynew")]<-lapply(
+    splitpc[c("sq","Ynew")],function(x){
     #get index
     sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
     
-    #merge with indat to get species
+    #merge with observed data to get species
     ragged<-sv %>% left_join(indat[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
+    
+    pc<-data.frame(x,ragged)
+    return(pc)
+    })
+  
+  #ragged index - predicted
+  splitpc[c("prediction")]<-lapply(
+    splitpc[c("prediction")],function(x){
+    
+      #get index
+    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
+    
+    #merge with predicted data to get species
+    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
     
     pc<-data.frame(x,ragged)
     return(pc)
@@ -324,7 +357,7 @@ return(chains)}
 ```
 
 ```{r}
-chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction) %>%  left_join(jagsIndexPlants)
+chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -334,38 +367,28 @@ chains$phylogenetic_attraction %>% filter(parameter %in% c("alpha","sigma","e"))
 ```
 
 ```{r}
-chains$phylogenetic_attraction %>% filter(parameter %in% c("fit","fitnew","lambda","omega","fitpred")) %>%  ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free")
+chains$phylogenetic_attraction %>% filter(parameter %in% c("fit","fitnew","lambda","omega","fitpred")) %>%  ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
 ```
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$phylogenetic_attraction %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+chains$phylogenetic_attraction %>% filter(!parameter %in% c("sq","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-### Estimated phenology
+## Estimated Phenology
 
-Red is the kernel density from the underlying data
-Black is the model
+```{r,fig.height=11}
+preds<-chains$phylogenetic_attraction %>% filter(parameter %in% c("Ynew")) %>% group_by(Plant,Index)
 
-```{r}
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+```
 
-#define prediction functions
-predict_density<-function(x){
-  #grab alphas
-  alphas<- x %>% filter(parameter %in% c("alpha")) %>% select(Draw,chain,parameter,value) %>% spread(parameter,value)
-  
-  preds<-x %>% select(-par) %>% filter(parameter %in% c("sigma","e"))  %>% spread(parameter,value) %>% inner_join(alphas) %>% group_by(Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$e,.$sigma)) %>% group_by(Plant,Day) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
-}
+## Predicted Phenology
 
-predict_plant<-function(alpha,e,sigma){
-  mu = alpha + e
-  value<-dtruncnorm(0:365,a=0,b=365,mean=mu,sd=sigma)
-  return(data.frame(mu,sigma,Day=0:365,value))
-}
+```{r,fig.height=11}
+preds<-chains$phylogenetic_attraction %>% filter(parameter %in% c("prediction")) %>% group_by(Plant,Index)
 
-preds<-predict_density(chains$phylogenetic_attraction)
-
-ggplot(preds)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper),alpha=0.5) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free") + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ## Decay in phylogenetic attraction
@@ -392,11 +415,11 @@ source("model/normal_repulsion.R")
 writeLines(readLines("model/normal_repulsion.R"))
 
 #Run Model
-runModel<-function(Yobs_dat,Ynew_dat,D=D){
+runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   
   #Parameters to track
-  ParsStage <- c("alpha","sigma","fit","fitnew","sq","lambda","e","omega","fitpred")
+  ParsStage <- c("alpha","beta","sigma","fit","fitnew","sq","lambda","e","omega","fitpred","Ynew","prediction")
   
   #Jags Data
 
@@ -407,26 +430,28 @@ runModel<-function(Yobs_dat,Ynew_dat,D=D){
     Nobs=length(Yobs_dat$julian),
     zeros=rep(0,max(c(Yobs_dat$jPlant))),
     D=D,
+    ele=Yobs_dat$ele,
     
     #Prediction data
     Ypred=Ynew_dat$julian,
     Ypred_plant=Ynew_dat$jPlant,
+    ele_new=Ynew_dat$ele,
     Npreds=length(Ynew_dat$julian))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$phylogenetic_repulsion<-runModel(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
+models$phylogenetic_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
 ```
 
 #Get Chains
 
 ```{r}
-chains$phylogenetic_repulsion<-getChains(models$phylogenetic_repulsion) %>%  left_join(jagsIndexPlants)
+chains$phylogenetic_repulsion<-getChains(models$phylogenetic_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -436,23 +461,28 @@ chains$phylogenetic_repulsion %>% filter(parameter %in% c("alpha","sigma","e")) 
 ```
 
 ```{r}
-chains$phylogenetic_repulsion %>% filter(par %in% c("fit","fitnew","lambda","omega","fitpred")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free")
+chains$phylogenetic_repulsion %>% filter(par %in% c("fit","fitnew","lambda","omega","fitpred")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
 ```
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$phylogenetic_repulsion %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+chains$phylogenetic_repulsion %>% filter(!parameter %in% c("sq","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-### Estimated phenology
+## Estimated Phenology
 
-Red is the kernel density from the underlying data
-Black is the model
+```{r,fig.height=11}
+preds<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("Ynew")) %>% group_by(Plant,Index)
 
-```{r}
-preds<-predict_density(chains$phylogenetic_repulsion)
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+```
 
-ggplot(preds)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper),alpha=0.5) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free") + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
+## Predicted Phenology
+
+```{r,fig.height=11}
+preds<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("prediction")) %>% group_by(Plant,Index)
+
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ## Decay in phylogenetic repulsion
@@ -485,12 +515,13 @@ indat$Plant<-factor(indat$Plant,levels=rownames(traits))
 indat$jPlant<-as.numeric(indat$Plant)
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
 
-#give each row an index
-indat$Index<-1:nrow(indat)
-
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
+
+#give index positions
+to_predict$Index<-1:nrow(to_predict)
+indat$Index<-1:nrow(indat)
 ```
 
 ```{r}
@@ -500,67 +531,44 @@ source("model/normal_attraction.R")
 #print model
 writeLines(readLines("model/normal_attraction.R"))
 
-#Run Model
-runModel<-function(Yobs_dat,Ynew_dat,D){
-  
-  
-  #Parameters to track
-  ParsStage <- c("alpha","sigma","fit","fitnew","sq","lambda","e","fitpred")
-  
-  #Jags Data
-
-  Dat<-list(
-    Yobs=Yobs_dat$julian,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$julian),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    D=D,
-    #Prediction Data
-    Ypred=Ynew_dat$julian,
-    Ypred_plant=Ynew_dat$jPlant,
-    Npreds=length(Ynew_dat$julian))
-  
-  #MCMC options
-    system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
-    )
-    return(model)
-}
-
-models$trait_attraction<-runModel(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
+models$trait_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
 ```
 
 #Get Chains
 
 ```{r}
-chains$trait_attraction<-getChains(models$trait_attraction) %>%  left_join(jagsIndexPlants)
+chains$trait_attraction<-getChains(models$trait_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
 
 ```{r,fig.height=12,fig.width=15}
-chains$trait_attraction %>% filter(parameter %in% c("alpha","sigma","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+chains$trait_attraction %>% filter(parameter %in% c("alpha","sigma","e","beta")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
 ```
 
 ```{r}
-chains$trait_attraction %>% filter(par %in% c("fit","fitnew","lambda","fitpred")) %>%  ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free")
+chains$trait_attraction %>% filter(par %in% c("fit","fitnew","lambda","fitpred","omega")) %>%  ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
 ```
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$trait_attraction %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+chains$trait_attraction %>% filter(!parameter %in% c("sq","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-### Estimated phenology
+## Estimated Phenology
 
-Red is the kernel density from the underlying data
-Black is the model
+```{r,fig.height=11}
+preds<-chains$trait_attraction %>% filter(parameter %in% c("Ynew")) %>% group_by(Plant,Index)
 
-```{r}
-preds<-predict_density(chains$trait_attraction)
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+```
 
-ggplot(preds)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper),alpha=0.5) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free") + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
+## Predicted Phenology
+
+```{r,fig.height=11}
+preds<-chains$trait_attraction %>% filter(parameter %in% c("prediction")) %>% group_by(Plant,Index)
+
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ## Decay in trait attraction
@@ -580,42 +588,13 @@ source("model/normal_repulsion.R")
 #print model
 writeLines(readLines("model/normal_repulsion.R"))
 
-#Run Model
-runModel<-function(Yobs_dat,Ynew_dat,D){
-  
-  
-  #Parameters to track
-  ParsStage <- c("alpha","sigma","fit","fitnew","sq","lambda","e","omega","fitpred")
-  
-  #Jags Data
-
-  Dat<-list(
-    Yobs=Yobs_dat$julian,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$julian),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    D=D,
-    
-    #Prediction Data
-    Ypred=Ynew_dat$julian,
-    Ypred_plant=Ynew_dat$jPlant,
-    Npreds=length(Ynew_dat$julian))
-  
-  #MCMC options
-    system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/normal_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
-    )
-    return(model)
-}
-
-models$trait_repulsion<-runModel(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
+models$trait_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
 ```
 
 #Get Chains
 
 ```{r}
-chains$trait_repulsion<-getChains(models$trait_repulsion) %>%  left_join(jagsIndexPlants)
+chains$trait_repulsion<-getChains(models$trait_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -625,23 +604,28 @@ chains$trait_repulsion %>% filter(parameter %in% c("alpha","sigma","e")) %>% ggp
 ```
 
 ```{r}
-chains$trait_repulsion %>% filter(par %in% c("fit","fitnew","lambda","omega","fitpred")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free")
+chains$trait_repulsion %>% filter(par %in% c("fit","fitnew","lambda","omega","fitpred")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
 ```
 
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
-chains$trait_repulsion %>% filter(!parameter %in% c("sq")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+chains$trait_repulsion %>% filter(!parameter %in% c("sq","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-### Estimated phenology
+## Estimated Phenology
 
-Red is the kernel density from the underlying data
-Black is the model
+```{r,fig.height=11}
+preds<-chains$trait_repulsion %>% filter(parameter %in% c("Ynew")) %>% group_by(Plant,Index)
 
-```{r}
-preds<-predict_density(chains$trait_repulsion)
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3)+ labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
+```
 
-ggplot(preds)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper),alpha=0.5) + geom_line(aes(x=Day,y=mean)) + facet_wrap(~Plant,scales="free") + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.1,fill="red") + theme_bw()
+## Predicted Phenology
+
+```{r,fig.height=11}
+preds<-chains$trait_repulsion %>% filter(parameter %in% c("prediction")) %>% group_by(Plant,Index)
+
+ggplot(preds) + geom_density(fill="black",aes(x=value)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ## Decay in trait repulsion
@@ -685,15 +669,24 @@ allpars %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(x=Model,y=mean)) + g
 allpars %>% filter(parameter %in% "e") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="E")
 ```
 
-### Estimated phenology density
+## Omega: The magnitude of the effect of autocorrelation on mean flowering date
 
-```{r,fig.height=12,fig.width=12}
-#need to compute seperately for julian and the other models
-  allalphas<- allchains %>% filter(parameter %in% c("alpha")) %>% select(Model,Draw,chain,parameter,value) %>% spread(parameter,value)
-  
-  correlated_predictions<-allchains %>% select(-par) %>% filter(!Model %in% "julian",parameter %in% c("sigma","e"))  %>% spread(parameter,value) %>% inner_join(allalphas) %>% group_by(Model,Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$e,.$sigma)) %>% group_by(Model,Plant,Day) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
-  
-ggplot(correlated_predictions)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper,fill=Model),alpha=0.5) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.001,fill="red") + theme_bw()
+```{r,fig.height=12,fig.width=10}
+allpars %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="Omega")
+```
+
+## Beta: The effect of elevation on flowering timing
+
+```{r,fig.height=12,fig.width=10}
+allpars %>% filter(parameter %in% "beta") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="Beta")
+```
+
+## Estimated Phenology
+
+```{r,fig.height=10,fig.width=12}
+preds<-allchains %>% filter(parameter %in% c("Ynew")) %>% group_by(Model,Plant,Index)
+
+ggplot(preds) + geom_density(aes(x=value,fill=Model)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=indat,aes(x=julian),alpha=0.5,fill="red") + theme_bw()
 ```
 
 ## Effect of autocorrelation
@@ -752,13 +745,12 @@ allchains %>% filter(parameter %in% "sq") %>% group_by(Draw,chain,Model,Plant) %
 allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Root Mean Squared Error") + theme_bw()
 ```
 
-```{r,fig.height=12,fig.width=12}
-#need to compute seperately for julian and the other models
-allalphas<- allchains %>% filter(parameter %in% c("alpha")) %>% select(Model,Draw,chain,parameter,value) %>% spread(parameter,value)
-  
-correlated_predictions<-allchains %>% select(-par) %>% filter(!Model %in% "julian",parameter %in% c("sigma","e"))  %>% spread(parameter,value) %>% inner_join(allalphas) %>% group_by(Model,Draw,chain,Plant) %>% do(predict_plant(.$alpha,.$e,.$sigma)) %>% group_by(Model,Plant,Day) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+## Predicted Phenology
 
-ggplot(correlated_predictions)  + geom_ribbon(aes(x=Day,ymin=lower,ymax=upper,fill=Model),alpha=0.5) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=transects %>% filter(Year %in% 2017),aes(x=julian),alpha=0.001,fill="red") + theme_bw()
+```{r,fig.height=11,fig.width=12}
+preds<-allchains %>% filter(parameter %in% c("prediction")) %>% group_by(Model,Plant,Index)
+
+ggplot(preds) + geom_density(aes(x=value,fill=Model)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=julian),alpha=0.5,fill="black") + theme_bw()
 ```
 
 ```{r}

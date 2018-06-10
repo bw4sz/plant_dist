@@ -5,7 +5,7 @@ cat("
     for (x in 1:Nobs){
     
     #observation
-    mu[x] <- alpha + e[Plant[x]]
+    mu[x] <- alpha + beta[Plant[x]] * ele[x] + e[Plant[x]]
     Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
     
     #Residuals
@@ -52,14 +52,15 @@ cat("
     for(i in 1:Npreds){
     
     #predict value
-    prediction[i] ~ dnorm(mu[Ypred_plant[i]],tau[Ypred_plant[i]])T(0,365)
+    mu_new[i] <- alpha + beta[Ypred_plant[i]] * ele_new[i] + e[Ypred_plant[i]]
+    prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
     
     #squared predictive error
     pred_error[i] <- pow(Ypred[i] - prediction[i],2)
     }
     
     #Root Mean Squared Predictive Error
-    fitpred<-sqrt(sum(pred_error[])/Npreds)
+    fitpred<-sqrt(sum(pred_error)/Npreds)
     
     # Priors #
     ##########
@@ -71,6 +72,9 @@ cat("
     
     for (j in 1:Plants){
     
+    #effect of elevation
+    beta[j] ~ dnorm(0,0.0001)
+
     #variance
     sigma[j] ~ dunif(0,75)
     tau[j] <- pow(sigma[j], -2)

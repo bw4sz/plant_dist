@@ -11,14 +11,14 @@ cat("
       Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
       
       #Residuals
-      residuals[x] <- Yobs[x] - mu[Plant[x]]
+      residuals[x] <- Yobs[x] - mu[x]
       
       #squared error
       sq[x]<-pow(residuals[x],2)
 
       #Assess Model Fit - squared residuals
       Ynew[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
-      sq.new[x]<-pow(Ynew[x] - mu[Plant[x]],2)
+      sq.new[x]<-pow(Ynew[x] - mu[x],2)
     
     }
     

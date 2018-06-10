@@ -47,7 +47,7 @@ cat("
     for(i in 1:Npreds){
     
     #predict value
-    mu_new[i] <-  alpha + beta[Plant[i]] * ele_new[i] + e[Plant[i]]
+    mu_new[i] <-  alpha + beta[Ypred_plant[i]] * ele_new[i] + e[Ypred_plant[i]]
     prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
     
     #squared predictive error
@@ -55,7 +55,7 @@ cat("
     }
     
     #Root Mean Squared Predictive Error
-    fitpred<-sqrt(sum(pred_error[])/Npreds)
+    fitpred<-sqrt(sum(pred_error)/Npreds)
     
     # Priors #
     ##########
@@ -64,6 +64,8 @@ cat("
     
     for (j in 1:Plants){
 
+    beta[j] ~ dnorm(0,0.0001)
+
     #variance
     sigma[j] ~ dunif(0,75)
     tau[j] <- pow(sigma[j], -2)
@@ -71,7 +73,7 @@ cat("
 
     #Intercept
     alpha ~ dnorm(0,0.0001)
-
+    
     #Strength of covariance decay
     lambda ~ dunif(0,5)
 
