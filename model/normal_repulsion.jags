@@ -34,9 +34,12 @@
     }
     }
     
+    #Autocorrelation `signal`, omega shapes the magnitude of the diagonal, as in pagels lambda
+    vCov = omega*C[,] + (1-omega) * I
+
+    #For clarity sake the inverse is performed, even though it is undone by converting to precision
     #Inverse matrix correlation for repulsion - see Ives and Helmus 2011
-    #For clarity sake this is performed, even though it is undone by converting to precision
-    iC=inverse(omega * C[,])
+    iC=inverse(vCov*gamma)
     
     ## Covert variance to precision for each parameter
     
@@ -66,13 +69,14 @@
     
     #Julian Intercept
     alpha ~ dnorm(0,0.0001)
-    
+    gamma ~ dunif(0,20)
+
     #Species level priors
     
     for (j in 1:Plants){
     
     #effect of elevation
-    beta[j] ~ dnorm(0,0.0001)
+    beta[j] <- 0
 
     #variance
     sigma[j] ~ dunif(0,75)
@@ -80,7 +84,7 @@
     } 
     
     #Strength of covariance decay
-    lambda ~ dunif(0,5)
-    omega ~ dunif(0,20)
+    lambda = 5
+    omega ~ dbeta(1,1)
     }
     

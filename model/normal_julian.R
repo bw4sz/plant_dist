@@ -31,7 +31,7 @@ cat("
     for(i in 1:Npreds){
 
       #predict value
-      mu_new[i]<-alpha[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[Ypred_plant[i]]
+      mu_new[i]<-alpha[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[i]
       prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
     
       #squared predictive error
@@ -51,7 +51,7 @@ cat("
     alpha[j] ~ dnorm(0,0.0001)
   
     #Effect of elevation
-    beta[j] ~ dnorm(0,0.0001)
+    beta[j] <- 0
 
     #variance
     sigma[j] ~ dunif(0,75)

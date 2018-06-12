@@ -34,9 +34,9 @@ cat("
     }
     }
     
-    ## Covert variance to precision for each parameter
-    
-    iC=inverse(omega*C[,])
+    ## Covert variance to precision for each parameter, allow omega to shrink to identity matrix
+    vCov = omega*C[,] + (1-omega) * I
+    iC=inverse(vCov*gamma)
     tauC=iC
     tauC2=iC
     
@@ -64,7 +64,7 @@ cat("
     
     for (j in 1:Plants){
 
-    beta[j] ~ dnorm(0,0.0001)
+    beta[j] <- 0
 
     #variance
     sigma[j] ~ dunif(0,75)
@@ -73,12 +73,12 @@ cat("
 
     #Intercept
     alpha ~ dnorm(0,0.0001)
-    
-    #Strength of covariance decay
-    lambda ~ dunif(0,5)
+    gamma ~ dunif(0,20)
 
+    #Strength of covariance decay
+    lambda = 5
     #Magnitude of the phylogenetic effect
-    omega ~ dunif(0,20)
+    omega ~ dbeta(1,1)
     
     }
     ",fill=TRUE)
