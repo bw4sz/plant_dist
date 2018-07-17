@@ -3,42 +3,51 @@
     
     for (x in 1:Nobs){
 
-      #Effect of environment
-      mu[x] <- alpha[Plant[x]] + beta[Plant[x]] * ele[x]
+      #Observation - count
+      Y[x] ~ dpois(lambda[x])
 
-      #observation
-      Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
+      #Intensity is the probability of presence, species intercept and the phylogenetic covariance
+      log(lambda[x]) = z[x] * alpha[Plant[x]]
+
+      #Probability of presence
+      z[x] ~ dbern(psi[x])
+      logit(psi[x])<- alpha2[Plant[x]] + beta[Plant[x]] * ele[x]
       
       #Residuals
-      residuals[x] <- Yobs[x] - mu[x]
-      
-      #squared error
-      sq[x]<-pow(residuals[x],2)
+      discrepancy[x] <- pow(Y[x] - lambda[x],2)/lambda[x]
 
-      #Assess Model Fit - squared residuals
-      Ynew[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
-      sq.new[x]<-pow(Ynew[x] - mu[x],2)
+      #Assess Model Fit
+      Ynew[x] ~ dpois(lambda[x])
+      discrepancy.new[x]<-pow(Ynew[x] - lambda[x],2)/lambda[x]
     
     }
     
-    #Root mean squared residuals
-    fit<-sqrt(sum(sq[])/Nobs)
-    fitnew<-sqrt(sum(sq.new[])/Nobs)  
+    #Sum discrepancy
+    fit<-sum(discrepancy)
+    fitnew<-sum(discrepancy.new)
 
     #Prediction
 
     for(i in 1:Npreds){
 
       #predict value
-      mu_new[i]<-alpha[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[i]
-      prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
-    
+
+      #Observation - count
+      prediction[i] ~ dpois(lambda_new[i])
+
+      #Intensity is the probability of presence, species intercept and the phylogenetic covariance
+      log(lambda_new[i]) = z_new[i] * alpha[Ypred_plant[i]]
+
+      #Probability of presence
+      z_new[i] ~ dbern(psi_new[i])
+      logit(psi_new[i])<- alpha2[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[i]
+
       #squared predictive error
       pred_error[i] <- pow(Ypred[i] - prediction[i],2)
     }
 
-    #Root Mean Squared Predictive Error
-    fitpred<-sqrt(sum(pred_error[])/Npreds)
+    #Predictive Error
+    fitpred<-sum(pred_error)
 
     #Priors
     
@@ -47,14 +56,14 @@
     for (j in 1:Plants){
     
     #Intercept
+    #Intercept flowering count
     alpha[j] ~ dnorm(0,0.0001)
-  
-    #Effect of elevation
-    beta[j] <- 0
 
-    #variance
-    sigma[j] ~ dunif(0,75)
-    tau[j] <- pow(sigma[j], -2)
+    #Internet probability of presence, logit transformed
+    alpha2[j] ~ dnorm(0,0.386)
+
+    #Effect of elevation, logit transformed
+    beta[j] ~ dnorm(0,0.386)
     } 
     
     }

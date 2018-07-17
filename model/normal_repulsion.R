@@ -1,91 +1,101 @@
-sink("model/normal_repulsion.jags")
+sink("model/poisson_occ_elev_repulsion.jags")
 cat("
     model {
     
     for (x in 1:Nobs){
     
-    #observation
-    mu[x] <- alpha + beta[Plant[x]] * ele[x] + e[Plant[x]]
-    Yobs[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
+    #Observation - count
+    Y[x] ~ dpois(lambda[x])
+    
+    #Intensity is the probability of presence, species intercept and the phylogenetic covariance
+    log(lambda[x]) = z[x] * (alpha[Plant[x]] + e[Plant[x]])
+    
+    #Probability of presence
+    z[x] ~ dbern(psi[x])
+    logit(psi[x])<- alpha2[Plant[x]] + beta[Plant[x]] * ele[x]
     
     #Residuals
-    residuals[x] <- Yobs[x] - mu[x]
+    discrepancy[x] <- pow(Yobs[x] - lambda[x],2)/lambda[x]
     
-    #squared error
-    sq[x]<-pow(residuals[x],2)
-    
-    #Assess Model Fit - squared residuals
-    Ynew[x] ~ dnorm(mu[x],tau[Plant[x]])T(0,365)
-    sq.new[x]<-pow(Ynew[x] - mu[x],2)
+    #Assess Model Fit
+    Ynew[x] ~ dpois(lambda[x])
+    discrepancy.new[x]<-pow(Ynew[x] - lambda[x],2)/lambda[x]
     
     }
     
-    #sum of squared error
-    #Root mean squared error
-    fit<-sqrt(sum(sq[])/Nobs)
-    fitnew<-sqrt(sum(sq.new[])/Nobs)
+    #Sum discrepancy
+    fit<-discrepancy/Nobs
+    fitnew<-discrepancy.new/Nobs
     
-    #autocorrelation in error
-    e[1:Plants] ~ dmnorm(zeros[],tauC[,])
-    
-    ##covariance among similiar species
-    for(i in 1:Plants){
-    for(j in 1:Plants){
-    C[i,j] = exp(-lambda * D[i,j])
-    }
-    }
-    
-    #Autocorrelation `signal`, omega shapes the magnitude of the diagonal, as in pagels lambda
-    vCov = omega*C[,] + (1-omega) * I
-
-    #For clarity sake the inverse is performed, even though it is undone by converting to precision
-    #Inverse matrix correlation for repulsion - see Ives and Helmus 2011
-    iC=inverse(vCov*gamma)
-    
-    ## Covert variance to precision for each parameter
-    
-    iiC=inverse(iC[,])
-    tauC=iiC
-    tauC2=iiC
-    
-    ###########
+    ############
     #Prediction
-    ###########
-
+    ############
+    
     for(i in 1:Npreds){
     
     #predict value
-    mu_new[i] <- alpha + beta[Ypred_plant[i]] * ele_new[i] + e[Ypred_plant[i]]
-    prediction[i] ~ dnorm(mu_new[i],tau[Ypred_plant[i]])T(0,365)
+    
+    #Observation - count
+    prediction[i] ~ dpois(lambda_new[i])
+    
+    #Intensity is the probability of presence, species intercept and the phylogenetic covariance
+    log(lambda_new[i]) = z_new[i] * (alpha[Ypred_plant[i]] + e[Ypred_plant[i]])
+    
+    #Probability of presence
+    z_new[i] ~ dbern(psi_new[i])
+    logit(psi_new[i])<- alpha2[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[i]
     
     #squared predictive error
     pred_error[i] <- pow(Ypred[i] - prediction[i],2)
     }
     
-    #Root Mean Squared Predictive Error
-    fitpred<-sqrt(sum(pred_error)/Npreds)
+    #Sum Predictive Error
+    fitpred<-pred_error/Npreds
     
-    # Priors #
-    ##########
+    #########################
+    #autocorrelation in error
+    #########################
     
-    #Julian Intercept
-    alpha ~ dnorm(0,0.0001)
-    gamma ~ dunif(0,20)
+    e[1:Plants] ~ dmnorm(zeros[],tauC[,])
+    
+    ##covariance among similiar species
+    for(i in 1:Plants){
+    for(j in 1:Plants){
+    C[i,j] = exp(-lambda_cov * D[i,j])
+    }
+    }
+    
+    ## Covert variance to precision for each parameter, allow omega to shrink to identity matrix
+    #For the sake of clarity, we would inverse again for repulsion matrix, no need since its a precision matrix
+    vCov = omega*C[,] + (1-omega) * I
+    ic=vCov*gamma
 
+    #Priors
+    
     #Species level priors
     
     for (j in 1:Plants){
     
-    #effect of elevation
-    beta[j] <- 0
-
+    #Intercept
+    #Intercept flowering count
+    alpha[j] ~ dnorm(0,0.0001)
+    
+    #Internet probability of presence
+    alpha2[j] ~ dnorm(0,0.0001)
+    
+    #Effect of elevation
+    beta[j] ~ dnorm(0,0.0001)
+    
     #variance
     sigma[j] ~ dunif(0,75)
     tau[j] <- pow(sigma[j], -2)
     } 
     
+    #Autocorrelation priors
+    gamma ~ dunif(0,20)
+    
     #Strength of covariance decay
-    lambda = 5
+    lambda_cov = 5
     omega ~ dbeta(1,1)
     }
     ",fill=TRUE)
