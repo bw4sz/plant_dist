@@ -67,8 +67,10 @@ ggplot(int_plot,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + coord_flip() 
 #2013
 fl<-read.csv("data/FlowerTransectClean.csv")
 
+fl[fl$Iplant_Double %in% "Alloplectus tetragonoides","Iplant_Double"]<- "Drymonia collegarum"
+
 #select columns and gesneriaceae
-transects_2013<-fl %>% select(Plant=Iplant_Double,Flowers=Total_Flowers,Date=Date_F,lon,lat,ele) %>% filter(Plant %in% gesner,!is.na(ele)) %>% mutate(Flowers=as.numeric(Flowers))
+transects_2013<-fl %>% select(Plant=Iplant_Double,Observer,Flowers=Total_Flowers,Date=Date_F,lon,lat,ele) %>% filter(Plant %in% gesner,!is.na(ele)) %>% mutate(Flowers=as.numeric(Flowers))
 
 #make posix date columns
 transects_2013$Date<-as.POSIXct(transects_2013$Date)
@@ -83,7 +85,7 @@ transects_2017$Date<-as.POSIXct(transects_2017$Date,format="%d/%m/%Y")
 transects<-bind_rows(transects_2013,transects_2017)
 
 #reduce observer effects, take out karen's data
-transects<-transects %>% filter(chron::years(Date) >= 2014 )
+transects<-transects %>% filter(chron::years(Date) >= 2014,!Observer=="Karen" ) %>% select(-Observer)
 
 #view dates
 transects %>% group_by(Date,Plant) %>% summarize(s=sum(Flowers)) %>% ggplot(.,aes(x=Date,y=s)) + facet_wrap(~Plant,scales="free") + geom_point() +theme_bw()

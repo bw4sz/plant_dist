@@ -8,18 +8,14 @@ cat("
     Y[x] ~ dpois(lambda[x])
     
     #Intensity is the probability of presence, species intercept and the phylogenetic covariance
-    log(lambda[x]) = z[x] * (alpha[Plant[x]] + e[Plant[x]])
-    
-    #Probability of presence
-    z[x] ~ dbern(psi[x])
-    logit(psi[x])<- alpha2[Plant[x]] + beta[Plant[x]] * ele[x]
+    log(lambda[x]) = alpha[Plant[x]] + e[Plant[x]]
     
     #Residuals
-    discrepancy[x] <- pow(Y[x] - lambda[x],2)/lambda[x]
+    discrepancy[x] <- pow(Y[x] - lambda[x],2)
     
     #Assess Model Fit
     Ynew[x] ~ dpois(lambda[x])
-    discrepancy.new[x]<-pow(Ynew[x] - lambda[x],2)/lambda[x]
+    discrepancy.new[x]<-pow(Ynew[x] - lambda[x],2)
     
     }
     
@@ -39,18 +35,14 @@ cat("
     prediction[i] ~ dpois(lambda_new[i])
     
     #Intensity is the probability of presence, species intercept and the phylogenetic covariance
-    log(lambda_new[i]) = z_new[i] * (alpha[Ypred_plant[i]] + e[Ypred_plant[i]])
-    
-    #Probability of presence
-    z_new[i] ~ dbern(psi_new[i])
-    logit(psi_new[i])<- alpha2[Ypred_plant[i]] + beta[Ypred_plant[i]] * ele_new[i]
+    log(lambda_new[i]) = alpha[Ypred_plant[i]] + e[Ypred_plant[i]]
     
     #squared predictive error
     pred_error[i] <- pow(Ypred[i] - prediction[i],2)
     }
     
     #Sum Predictive Error
-    fitpred<-pred_error/Npreds
+    fitpred<-pred_error
     
     #########################
     #autocorrelation in error
@@ -79,12 +71,6 @@ cat("
     #Intercept
     #Intercept flowering count
     alpha[j] ~ dnorm(0,0.0001)
-    
-    #Internet probability of presence
-    alpha2[j] ~ dnorm(0,0.0001)
-    
-    #Effect of elevation
-    beta[j] ~ dnorm(0,0.0001)
   
     } 
     
