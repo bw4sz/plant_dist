@@ -214,7 +214,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -354,7 +354,7 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -507,7 +507,7 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
     )
     return(model)
 }
