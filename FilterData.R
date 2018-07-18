@@ -85,7 +85,7 @@ transects_2017$Date<-as.POSIXct(transects_2017$Date,format="%d/%m/%Y")
 transects<-bind_rows(transects_2013,transects_2017)
 
 #reduce observer effects, take out karen's data
-transects<-transects %>% filter(chron::years(Date) >= 2014,!Observer=="Karen" ) %>% select(-Observer)
+transects<-transects %>% filter(!Observer %in% "Karen") %>% select(-Observer)
 
 #view dates
 transects %>% group_by(Date,Plant) %>% summarize(s=sum(Flowers)) %>% ggplot(.,aes(x=Date,y=s)) + facet_wrap(~Plant,scales="free") + geom_point() +theme_bw()
@@ -93,8 +93,13 @@ transects %>% group_by(Date,Plant) %>% summarize(s=sum(Flowers)) %>% ggplot(.,ae
 #seaonally
 transects %>% mutate(Month=months(Date),Year=years(Date)) %>% group_by(Year,Month,Plant) %>% summarize(s=sum(Flowers)) %>% ggplot(.,aes(x=Month,y=s,col=Year)) + facet_wrap(~Plant,scales="free") + geom_line(aes(group=Year)) +theme_bw() 
 
+
 #julian day
-transects<-transects %>% mutate(Month=months(Date),Year=chron::years(Date),julian=yday(Date))
+transects<-transects %>% mutate(Month=months(Date),Year=chron::years(Date),julian=yday(Date)) %>% filter(Year > 2013)
+
+transects[transects$Year %in% "17","Year"]<-2017
+transects[transects$Year %in% "18","Year"]<-2018
+
 
 ggplot(transects,aes(x=julian,y=Flowers)) + facet_wrap(~Plant,scales="free") + geom_line()
 

@@ -3,7 +3,7 @@ library(mvtnorm)
 library(reshape2)
 
 ##Attraction
-lambda=10
+lambda=5
 
 #distance
 d<-as.matrix(cophenetic(phy))

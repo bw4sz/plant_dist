@@ -25,6 +25,7 @@ library(stringr)
 library(splines)
 library(R2jags)
 library(truncnorm)
+library(reshape2)
 
 #optionally load
 #load("/Users/ben/Dropbox/Gesner/Phenology.RData")
@@ -103,6 +104,18 @@ transects %>% group_by(Plant,Year) %>% filter(Flowers==max(Flowers)) %>% summari
 ggplot(data=transects) + geom_density(aes(x=julian,fill=Plant)) + facet_wrap(~Plant,ncol=3) + theme_bw()
 ```
 
+As range
+
+```{r,fig.height=10}
+
+transects %>% group_by(Plant,Year) %>% summarize(mean=mean(julian),lower=quantile(julian,0.05),upper=quantile(julian,0.95)) %>% ggplot(.,aes(x=Plant,col=as.factor(Year))) + geom_pointrange(aes(y=mean,min=lower,max=upper),size=0.3,position = position_jitter(height = 0.1)) + coord_flip() + labs(y="Julian Day",col="Year") + theme_bw()
+```
+
+```{r}
+transects %>% group_by(Plant,julian) %>% summarise(n=sum(Flowers)) %>% filter(!is.na(n)) %>%
+ggplot(.,aes(x=julian,y=n)) + geom_point(size=2) + labs(col="Year") + theme_bw() + facet_wrap(~Plant,scales = "free_y")
+```
+
 ## Infer absences
 
 ```{r,fig.height=15}
@@ -120,6 +133,8 @@ transects_zero<-bind_rows(sumf,zero_count)
 transects_zero %>% group_by(Plant,Year)  %>% filter(!is.na(n)) %>%
 ggplot(.,aes(x=julian,y=n,col=as.factor(Year))) + geom_point(size=2)+  facet_wrap(~Plant,scales="free",ncol=3) + labs(col="Year") + theme_bw()
 ```
+
+
 
 ## Species elevation ranges
 
@@ -144,13 +159,9 @@ a<-transects_zero %>% group_by(Date) %>% summarize(min=min(ele),max=max(ele),n=s
 ggplot(a,aes(x=Date)) + geom_linerange(aes(ymin=min,ymax=max))
 
 ggplot(a,aes(x=Date)) + geom_point(aes(y=n,size=n,col=n<5))
-
-a %>% filter(n < 5)
-
-transects_zero %>% filter(Date %in% "2014-01-09")
 ```
 
-Need to cut into better slices.
+Need to cut into better slices?
 
 # Count model of species phenology
 
@@ -203,7 +214,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -343,7 +354,7 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -365,10 +376,18 @@ getChains<-function(mod,indat,to_predict){
   splitpc<-split(pc,pc$parameter)
   
   #single index
-  splitpc[c("e","alpha")]<-lapply(
-    splitpc[c("e","alpha")],function(x){
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,jPlant=sv)
+    })
+  
+    #double index
+  splitpc[c("e")]<-lapply(
+    splitpc[c("e")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jPlant","jDate")
+    pc<-data.frame(x,sv)
     })
   
   #ragged index - observed
@@ -419,6 +438,23 @@ chains$phylogenetic_attraction %>% filter(parameter %in% c("fit","fitnew","lambd
 ```{r,fig.height=10,fig.width=10}
 chains$phylogenetic_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
+
+Mean phylogenetic covariance
+
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-vCov*gamma
+      result<-melt(result)
+      return(result)
+}
+
+result<-chains$phylogenetic_attraction %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=D)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_continuous(low="white",high="red")
+```
+
 
 ## Decay in phylogenetic attraction
 
@@ -471,7 +507,7 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -498,6 +534,22 @@ chains$phylogenetic_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov",
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
 chains$phylogenetic_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+```
+
+Mean phylogenetic covariance martix
+
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-solve(vCov*gamma)
+      result<-melt(result)
+      return(result)
+}
+
+result<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=D)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue")
 ```
 
 ## Decay in phylogenetic repulsion
@@ -578,6 +630,20 @@ chains$trait_attraction %>% filter(par %in% c("fit","fitnew","lambda_cov","fitpr
 chains$trait_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-vCov*gamma
+      result<-melt(result)
+      return(result)
+}
+
+result<-chains$trait_attraction %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=D)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue")
+```
+
 ## Decay in trait attraction
 
 ```{r}
@@ -619,6 +685,20 @@ chains$trait_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov","omega"
 chains$trait_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-solve(vCov*gamma)
+      result<-melt(result)
+      return(result)
+}
+
+result<-chains$trait_repulsion %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=D)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue")
+```
+
 ## Decay in trait repulsion
 
 ```{r}
@@ -649,7 +729,7 @@ allchains[allchains$Model=="julian","Effect"]<-NA
 
 The probability of occurrence.
 
-```{r}
+```{r,fig.height=12,fig.width=10}
 #Alphas
 
 #The baseline model is not logit transformed intercept
@@ -657,12 +737,16 @@ alphas<-allchains %>% filter(parameter %in% "alpha")
 
 alphas[!alphas$Model %in% "baseline","value"]<-inv.logit(alphas[!alphas$Model %in% "baseline","value"])
 
-alphas %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Model,y=mean,col=Plant)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + facet_wrap(~Plant,scales="free")
+alphas %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + facet_wrap(~Plant,scales="free")
 ```
 
 ## E: The effect of autocorrelation on mean flowering intensity
 
 ```{r,fig.height=12,fig.width=10}
+
+allpars<-allchains %>% filter(!parameter %in% c("discrepancy")) %>% group_by(Model,Plant,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+
 allpars %>% filter(parameter %in% "e") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="E")
 ```
 
@@ -679,8 +763,6 @@ allpars %>% filter(parameter %in% "gamma") %>% ggplot(.,aes(x=Model,y=mean)) + g
 ```
 
 ## Effect of autocorrelation
-
-TODO, e is not indexed correctly yet.
 
 ```{r}
 autocorrelation<-allchains %>% select(-par) %>% filter(parameter %in% "e")  %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
@@ -737,15 +819,7 @@ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model
 #Prediction
 
 ```{r}
-allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Root Mean Squared Error") + theme_bw()
-```
-
-## Out of sample data
-
-```{r,fig.height=11,fig.width=12}
-preds<-allchains %>% filter(parameter %in% c("prediction")) %>% group_by(Model,Plant,Index)
-
-ggplot(preds) + geom_density(aes(x=value,fill=Model)) + facet_wrap(~Plant,scales="free",ncol=3) + labs(x="Julian Day",y="Density") + geom_density(data=to_predict,aes(x=n),alpha=0.5,fill="black") + theme_bw()
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw()
 ```
 
 ```{r}
