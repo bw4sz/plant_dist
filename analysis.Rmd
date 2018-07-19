@@ -12,7 +12,7 @@ library(knitr)
 opts_chunk$set(message=F,warning=F,echo=F)
 
 library(ape)
-library(pander)
+library(kableExtra)
 library(boot)
 library(dplyr)
 library(ggplot2)
@@ -20,6 +20,8 @@ library(phytools)
 library(stringr)
 library(splines)
 library(R2jags)
+library(reshape2)
+library(tidyr)
 ```
 
 # Interactions
@@ -28,9 +30,8 @@ library(R2jags)
 
 #Interactions
 interactions<-read.csv("data/cleaned/interactions.csv",row.names=1)
-pander(head(interactions))
+head(interactions) %>% kable() %>% kable_styling()
 ```
-
 
 # Phylogeny
 
@@ -50,33 +51,29 @@ vcov<-vcv(phy,corr = T)
 I<-diag(nrow(vcov))
 ```
 
-
 # Traits
 ```{r}
 traits<-read.csv("data/Species_SantaLucia.csv")
 
 #improve column names
-traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length=Lc,vertical_diameter=D,stamen_length=S,stamen_exertion=E)
+traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length=Lc,vertical_diameter= D,stamen_length=S,stamen_exertion=E)
 
 #order the factors
 
-pander(head(traits))
+head(traits) %>% kable() %>% kable_styling()
 ```
 
 Sum interaction matrix plotted in plant phylogenetic order.
 
 ```{r}
-
 m<-interactions %>% filter(Plant %in% phy$tip.label) %>% group_by(Hummingbird,Plant) %>% summarize(n=n())
 m$Plant<-factor(m$Plant,levels=phy$tip.label)
 ggplot(m,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))
 ```
 
-#Phylogenetic model of species interactions
+# Estimate interaction probability
 
-Do plants show phylogenetic signal in hummingbird partners?
-
-Start with binary interactions
+The goal is to generate a distance matrix of mean niche overlap among plants.
 
 ```{r}
 ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))
@@ -84,7 +81,6 @@ ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme
 
 ```{r}
 #Convert to binary daily sampling
-
 dailydat<-interactions %>% group_by(ID,Date,ele,Plant,Hummingbird) %>% summarize(n=n()) %>% mutate(Yobs=(n>0)*1) %>% select(-n)
 ```
 
@@ -104,6 +100,7 @@ zero_count<-zero_count %>% anti_join(dailydat)
 #add a dummy label for presence absence
 indat<-bind_rows(data.frame(dailydat),data.frame(zero_count,Yobs=0))
 ```
+
 ```{r}
 
 #align factors with phylogeny
@@ -132,6 +129,204 @@ indat$jID<-as.numeric(as.factor(indat$ID))
 models<-list()
 chains<-list()
 ```
+
+```{r}
+#Source model
+source("model/intercept_interactions.R")
+
+#print model
+writeLines(readLines("model/intercept_interactions.R"))
+
+#Run Model
+runModel<-function(Yobs_dat){
+  
+  #Parameters to track
+  ParsStage <- c("alpha")
+  
+  #Jags Data
+
+  Dat<-list(
+    Yobs=Yobs_dat$Yobs,
+    Birds=max(c(Yobs_dat$jBird)),
+    Bird=Yobs_dat$jBird,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    Nobs=length(Yobs_dat$Yobs))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/intercept_interactions.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$intercept<-runModel(Yobs_dat=indat)
+```
+
+View Chains
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+  #single index
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jBird","jPlant")
+    pc<-data.frame(x,sv)
+    })
+  
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+## Alpha
+
+```{r,fig.height=8,fig.width=12}
+chains$intercept<-getChains(models$intercept)
+
+#merge species names
+chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
+
+#alpha
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=inv.logit(value),fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+```
+
+```{r,fig.height=8,fig.width=8}
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=inv.logit(n),x=Plant,y=Hummingbird)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)")
+```
+
+# Incomplete Detection
+
+There is a fixed probability of interactions among species, but our ability to observe this state is variable based on hummingbird species (e.g. differences in abundance).
+
+```{r}
+#Source model
+source("model/intercept_interactions_detection.R")
+
+#print model
+writeLines(readLines("model/intercept_interactions_detection.R"))
+
+#Run Model
+runModel<-function(Yobs_dat){
+  
+  #Parameters to track
+  ParsStage <- c("alpha","omega","beta")
+  
+  InitStage <- function(){
+    list(
+      z=array(dim=c(Dat$Birds,Dat$Plants,Dat$Cameras),data=1),
+      occ=array(dim=c(Dat$Birds,Dat$Plants,Dat$Cameras),data=1)
+    )
+  }
+  
+  #Jags Data
+
+  Dat<-list(
+    Yobs=Yobs_dat$Yobs,
+    Birds=max(c(Yobs_dat$jBird)),
+    Bird=Yobs_dat$jBird,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    Camera=Yobs_dat$jTime,
+    Cameras=max(Yobs_dat$jTime),
+    ele=indat %>% group_by(jTime) %>% summarize(ele=mean(ele)) %>% .$ele,
+    Nobs=length(Yobs_dat$Yobs))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,inits = InitStage, parameters.to.save=ParsStage,model.file="model/intercept_interactions_detection.jags",n.thin=2,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$intercept<-runModel(Yobs_dat=indat)
+```
+
+View Chains
+
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+    #single index
+  splitpc[c("omega","beta")]<-lapply(
+    splitpc[c("omega","beta")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jBird=sv)
+    })
+  
+  #double index
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jBird","jPlant")
+    pc<-data.frame(x,sv)
+    })
+  
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r,fig.height=8,fig.width=12}
+chains$intercept<-getChains(models$intercept)
+
+#merge species names
+chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
+
+#alpha
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+
+chains$intercept %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=value,fill=as.factor(chain))) + geom_density() + facet_wrap(~Hummingbird,scales="free") + labs(fill="Chain")
+
+chains$intercept %>% filter(parameter %in% "beta") %>% ggplot(.,aes(x=value,fill=as.factor(chain))) + geom_density() + facet_wrap(~Hummingbird,scales="free") + labs(fill="Chain")
+
+```
+
+### P(Occurrence)
+
+```{r}
+sim_elevation<-function(alpha,beta,ele){
+  pelev<-inv.logit(alpha + beta * ele)
+  data.frame(ele,value=pelev)
+}
+
+chains$intercept %>% filter(parameter %in% c("omega","beta")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Hummingbird,Draw,chain) %>% do(sim_elevation(alpha=.$omega,beta =.$beta ,ele=unique(indat$ele))) %>% group_by(Hummingbird,ele) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=ele)) + geom_ribbon(aes(ymin=lower,ymax=upper)) + geom_line(aes(y=mean),col="Red",linetype="dashed")+ labs(y="Detection Probability") + facet_wrap(~Hummingbird)
+```
+
+Compared to observations
+
+```{r}
+ggplot(indat,aes(x=ele,y=Yobs)) + geom_point() + facet_wrap(~Hummingbird) + stat_smooth(method="glm",method.args=list(family="binomial"))
+```
+
+### P(Interaction)
+
+```{r,fig.height=8,fig.width=8}
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="blue",mid="white",high="Red",midpoint=0.5)
+```
+
+#Phylogenetic model of species interactions
+
+Do plants show phylogenetic signal in hummingbird partners?
+
+Start with binary interactions
 
 ```{r}
 #Source model

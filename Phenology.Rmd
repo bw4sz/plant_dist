@@ -214,7 +214,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -354,7 +354,7 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -507,7 +507,7 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=10,n.burnin=0,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -816,6 +816,7 @@ Zoom in
 ```{r,fig.height=10,fig.width=12}
 allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
 ```
+
 #Prediction
 
 ```{r}
