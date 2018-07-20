@@ -10,14 +10,12 @@ cat("
       } 
     }
 
-#    #Additional elevation ranges - estimated from full dataset?
-#    for(i in 1:Birds){
-#    for(j in 1:AllCameras){
-#      logit(p_elev[i,j]) = alpha_elev[i] + beta_elev[i] * ele[j]
-#      Yele[i,j] ~ dbern(p_elev[i,j])
-#    }
-#    }
-    
+#    #Additional elevation information from full dataset.
+     for(i in 1:NElev_Obs){
+        logit(p_elev[i]) <- alpha_elev[Elev_Bird[i]] + beta[Elev_Bird[i]] * Elev_ele[i]
+        Elev_Y[i] ~ dbern(p_elev[i])
+     }
+
     
     # Bird presence at each camera (placed on a single flower Plant (j))
     for (i in 1:Birds){
@@ -25,7 +23,7 @@ cat("
         for(k in 1:Cameras){
 
           #Presence
-          logit(p_camera[i,j,k]) <- omega[i] +  beta[i] * ele[k]
+          logit(p_camera[i,j,k]) <- alpha_elev[i] +  beta[i] * ele[k]
           occ[i,j,k] ~ dbern(p_camera[i,j,k])
 
           #Latent Interaction State for each camera, conditional on presence
@@ -39,8 +37,8 @@ cat("
 
     for (x in 1:Nobs){
 
-      #Probability of interaction, conditional on detection and presence
-      psi[x] = z[Bird[x],Plant[x],Camera[x]] * phi[Bird[x],Plant[x]]
+      #Probability of detection, conditional on presence and interaction
+      psi[x] = z[Bird[x],Plant[x],Camera[x]] * omega[Bird[x]]
   
       #Interaction Observation
       Yobs[x] ~ dbern(psi[x])
@@ -52,8 +50,11 @@ cat("
     #Species level priors
     for (i in 1:Birds){
     
-      #Flat detection prior
-      omega[i] ~ dnorm(0,0.386)
+      #Detection prior
+      omega[i] ~ dbeta(1,1)
+
+      #Flat elevation intercept prior
+      alpha_elev[i] ~ dnorm(0,0.386)
   
       #Elevation presence priors
       beta[i] ~ dnorm(0,0.386)

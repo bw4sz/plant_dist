@@ -208,6 +208,16 @@ chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Pla
 
 There is a fixed probability of interactions among species, but our ability to observe this state is variable based on hummingbird species (e.g. differences in abundance).
 
+## Additional elevation information
+
+```{r}
+elev_zero<-read.csv("data/elevationdata.csv",row.names = 1)
+
+#Easiest to work with jags as numeric ordinal values
+elev_zero$Hummingbird<-as.factor(elev_zero$Hummingbird)
+elev_zero$jBird<-as.numeric(elev_zero$Hummingbird)
+```
+
 ```{r}
 #Source model
 source("model/intercept_interactions_detection.R")
@@ -216,10 +226,10 @@ source("model/intercept_interactions_detection.R")
 writeLines(readLines("model/intercept_interactions_detection.R"))
 
 #Run Model
-runModel<-function(Yobs_dat){
+runModel<-function(Yobs_dat,elev_data){
   
   #Parameters to track
-  ParsStage <- c("alpha","omega","beta")
+  ParsStage <- c("alpha","omega","beta","alpha_elev","z")
   
   InitStage <- function(){
     list(
@@ -239,16 +249,22 @@ runModel<-function(Yobs_dat){
     Camera=Yobs_dat$jTime,
     Cameras=max(Yobs_dat$jTime),
     ele=indat %>% group_by(jTime) %>% summarize(ele=mean(ele)) %>% .$ele,
-    Nobs=length(Yobs_dat$Yobs))
+    Nobs=length(Yobs_dat$Yobs),
+    
+    #Elevation Ranges
+    NElev_Obs=length(elev_data$Yobs),
+    Elev_Bird=elev_data$jBird,
+    Elev_ele=elev_data$ele,
+    Elev_Y=elev_data$Yobs)
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,inits = InitStage, parameters.to.save=ParsStage,model.file="model/intercept_interactions_detection.jags",n.thin=2,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
+      model<-jags(data=Dat,inits = InitStage, parameters.to.save=ParsStage,model.file="model/intercept_interactions_detection.jags",n.thin=1,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$intercept<-runModel(Yobs_dat=indat)
+models$intercept<-runModel(Yobs_dat=indat,elev_data=elev_zero)
 ```
 
 View Chains
@@ -266,8 +282,8 @@ getChains<-function(mod){
   splitpc<-split(pc,pc$parameter)
   
     #single index
-  splitpc[c("omega","beta")]<-lapply(
-    splitpc[c("omega","beta")],function(x){
+  splitpc[c("omega","beta","alpha_elev")]<-lapply(
+    splitpc[c("omega","beta","alpha_elev")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,jBird=sv)
     })
@@ -280,6 +296,13 @@ getChains<-function(mod){
     pc<-data.frame(x,sv)
     })
   
+    #double index
+  splitpc[c("z")]<-lapply(
+    splitpc[c("z")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:5]
+    colnames(sv)<-c("jBird","jPlant","jCamera")
+    pc<-data.frame(x,sv)
+    })
   chains<-bind_rows(splitpc)
 return(chains)}
 ```
@@ -307,7 +330,13 @@ sim_elevation<-function(alpha,beta,ele){
   data.frame(ele,value=pelev)
 }
 
-chains$intercept %>% filter(parameter %in% c("omega","beta")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Hummingbird,Draw,chain) %>% do(sim_elevation(alpha=.$omega,beta =.$beta ,ele=unique(indat$ele))) %>% group_by(Hummingbird,ele) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=ele)) + geom_ribbon(aes(ymin=lower,ymax=upper)) + geom_line(aes(y=mean),col="Red",linetype="dashed")+ labs(y="Detection Probability") + facet_wrap(~Hummingbird)
+chains$intercept %>% filter(parameter %in% c("alpha_elev","beta")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Hummingbird,Draw,chain) %>% do(sim_elevation(alpha=.$alpha_elev,beta =.$beta ,ele=unique(indat$ele))) %>% group_by(Hummingbird,ele) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=ele)) + geom_ribbon(aes(ymin=lower,ymax=upper)) + geom_line(aes(y=mean),col="Red",linetype="dashed")+ labs(y="Occurrence Probability") + facet_wrap(~Hummingbird)
+```
+
+### P(Detection)
+
+```{r}
+chains$intercept %>% filter(parameter %in% c("omega")) %>% group_by(Hummingbird) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=ele)) + geom_pointrange(aes(x=Hummingbird,ymin=lower,ymax=upper,y=mean)) + labs(y="Detection Probability") + coord_flip()
 ```
 
 Compared to observations
@@ -319,8 +348,10 @@ ggplot(indat,aes(x=ele,y=Yobs)) + geom_point() + facet_wrap(~Hummingbird) + stat
 ### P(Interaction)
 
 ```{r,fig.height=8,fig.width=8}
-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="blue",mid="white",high="Red",midpoint=0.5)
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="blue",mid="white",high="Red",midpoint=0.5,limits=c(0,1))
 ```
+
+# Niche Overlap
 
 #Phylogenetic model of species interactions
 

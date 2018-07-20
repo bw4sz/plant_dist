@@ -8,6 +8,7 @@ library(stringr)
 library(tidyr)
 library(taxize)
 library(lubridate)
+
 ###2013-2017 data
 #hummingbird interactions
 interactions_2013<-read.csv("data/HummingbirdInteractions.csv",row.names=1)
@@ -16,6 +17,7 @@ interactions_2013<-interactions_2013 %>% filter(!is.na(ID)) %>% select(ID,Date=D
 #convert to latin names
 get_latin<-comm2sci(levels(interactions_2013$Hummingbird),simplify = T)
 to_join<-data.frame(Hummingbird=names(get_latin),latin=sapply(get_latin,function(x) word(x,1,2)[[1]]))
+levels(to_join$latin)[levels(to_join$latin) %in% "Thalurania colombica"]<-"Thalurania fannyi"
 
 interactions_2013<-interactions_2013 %>% inner_join(to_join) %>% select(-Hummingbird) %>% rename(Hummingbird=latin)
 
@@ -103,6 +105,31 @@ transects[transects$Year %in% "18","Year"]<-2018
 
 ggplot(transects,aes(x=julian,y=Flowers)) + facet_wrap(~Plant,scales="free") + geom_line()
 
-#write files
+#write interaction files
 write.csv(ginteractions,"data/cleaned/interactions.csv")
 write.csv(transects,"data/cleaned/transects.csv")
+
+##Elevation ranges, use all plant species
+interactions<-interactions %>% select(ID,Date,Plant,ele,Hummingbird)
+
+#Impute non-detections. Start by assuming all hummingbirds occur at all elevations (can be relaxed)
+dailydat<-interactions %>% group_by(ID,Date,ele,Plant,Hummingbird) %>% summarize(n=n()) %>% mutate(Yobs=(n>0)*1) %>% select(-n) %>% filter(Hummingbird %in% ginteractions$Hummingbird )
+
+dailydat$Hummingbird<-as.factor(dailydat$Hummingbird)
+sumf<-dailydat %>% group_by(Plant,ID,Date,ele) %>% dplyr::summarize(n=n())
+
+#Create emptys zeros
+impute_zero<-function(x,Hummingbird){
+  df<-data.frame(Hummingbird=Hummingbird)
+}
+
+zero_count<-sumf %>% group_by(Plant,ID,Date,ele) %>% do(impute_zero(.,Hummingbird=levels(dailydat$Hummingbird)))
+zero_count<-zero_count %>% anti_join(dailydat)
+
+#add a dummy label for presence absence
+elev_zero<-bind_rows(data.frame(dailydat),data.frame(zero_count,Yobs=0)) %>% filter(!Plant %in% gesner,!is.na(ele))
+ggplot(elev_zero,aes(x=ele,y=Yobs)) + geom_point() + facet_wrap(~Hummingbird)
+
+#drop gesner species, not to duplicate data
+
+write.csv(elev_zero,"data/elevationdata.csv")
