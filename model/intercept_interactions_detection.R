@@ -10,21 +10,11 @@ cat("
       } 
     }
 
-#    #Additional elevation information from full dataset.
-     for(i in 1:NElev_Obs){
-        logit(p_elev[i]) <- alpha_elev[Elev_Bird[i]] + beta[Elev_Bird[i]] * Elev_ele[i]
-        Elev_Y[i] ~ dbern(p_elev[i])
-     }
 
-    
     # Bird presence at each camera (placed on a single flower Plant (j))
     for (i in 1:Birds){
       for( j in 1:Plants){
         for(k in 1:Cameras){
-
-          #Presence
-          logit(p_camera[i,j,k]) <- alpha_elev[i] +  beta[i] * ele[k]
-          occ[i,j,k] ~ dbern(p_camera[i,j,k])
 
           #Latent Interaction State for each camera, conditional on presence
           eff.phi[i,j,k] = occ[i,j,k] * phi[i,j]
