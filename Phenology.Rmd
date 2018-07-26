@@ -15,17 +15,17 @@ library(knitr)
 opts_chunk$set(message=F,warning=F,echo=F)
 library(lubridate)
 library(ape)
-library(tidyr)
 library(kableExtra)
 library(boot)
-library(dplyr)
 library(ggplot2)
 library(phytools)
 library(stringr)
+library(ggbiplot)
 library(splines)
 library(R2jags)
 library(truncnorm)
-library(reshape2)
+library(tidyr)
+library(dplyr)
 
 #optionally load
 #load("/Users/ben/Dropbox/Gesner/Phenology.RData")
@@ -43,6 +43,19 @@ head(transects) %>% kable() %>% kable_styling()
 
 #drop NA elevations
 transects<-transects %>% filter(!is.na(ele))
+```
+
+# Interactions
+
+```{r}
+intdata<-as.matrix(read.csv("PInteraction.csv",row.names = 1))
+Dint<-as.matrix(dist(t(intdata)))
+
+rownames(Dint)<-str_replace(rownames(Dint),"\\."," ")
+colnames(Dint)<-str_replace(colnames(Dint),"\\."," ")
+
+ggbiplot(prcomp(intdata))
+Dint<-Dint/max(Dint)
 ```
 
 # Phylogeny
@@ -97,7 +110,7 @@ ggplot(.,aes(x=julian,y=Flowers,col=as.factor(Year))) + geom_point(size=0.1) + g
 ## Peak date
 
 ```{r}
-transects %>% group_by(Plant,Year) %>% filter(Flowers==max(Flowers)) %>% summarize(julian=mean(julian)) %>% arrange(Plant,Year) %>% ggplot(.,aes(x=Plant,y=julian,col=as.factor(Year))) + geom_point(size=3) + theme_bw() + coord_flip() + labs(x="Plant",y="Julian Day of Peak Flowering",col="Year") 
+transects %>% group_by(Plant,Year) %>% filter(Flowers==max(Flowers)) %>% dplyr::summarize(julian=mean(julian)) %>% arrange(Plant,Year) %>% ggplot(.,aes(x=Plant,y=julian,col=as.factor(Year))) + geom_point(size=3) + theme_bw() + coord_flip() + labs(x="Plant",y="Julian Day of Peak Flowering",col="Year") 
 ```
 
 ```{r,fig.height=10}
@@ -133,8 +146,6 @@ transects_zero<-bind_rows(sumf,zero_count)
 transects_zero %>% group_by(Plant,Year)  %>% filter(!is.na(n)) %>%
 ggplot(.,aes(x=julian,y=n,col=as.factor(Year))) + geom_point(size=2)+  facet_wrap(~Plant,scales="free",ncol=3) + labs(col="Year") + theme_bw()
 ```
-
-
 
 ## Species elevation ranges
 
@@ -214,7 +225,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -354,7 +365,7 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -446,7 +457,7 @@ tauC<-function(omega,gamma,I,D,lambda_cov=5){
       C = exp(-lambda_cov * D)
       vCov=omega*C + (1-omega) * I
       result<-vCov*gamma
-      result<-melt(result)
+      result<-reshape2::melt(result)
       return(result)
 }
 
@@ -507,7 +518,7 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -543,7 +554,7 @@ tauC<-function(omega,gamma,I,D,lambda_cov=5){
       C = exp(-lambda_cov * D)
       vCov=omega*C + (1-omega) * I
       result<-solve(vCov*gamma)
-      result<-melt(result)
+      result<-reshape2::melt(result)
       return(result)
 }
 
@@ -635,7 +646,7 @@ tauC<-function(omega,gamma,I,D,lambda_cov=5){
       C = exp(-lambda_cov * D)
       vCov=omega*C + (1-omega) * I
       result<-vCov*gamma
-      result<-melt(result)
+      result<-reshape2::melt(result)
       return(result)
 }
 
@@ -690,7 +701,7 @@ tauC<-function(omega,gamma,I,D,lambda_cov=5){
       C = exp(-lambda_cov * D)
       vCov=omega*C + (1-omega) * I
       result<-solve(vCov*gamma)
-      result<-melt(result)
+      result<-reshape2::melt(result)
       return(result)
 }
 
@@ -705,6 +716,273 @@ ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_gradient
 traitrepulse_effect<-chains$trait_repulsion %>% filter(parameter=="lambda_cov") %>% group_by(Draw,chain) %>% do(effect_repulsion(.$value,Dtraits)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
 ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
+```
+
+# Interaction
+
+## Attraction
+
+```{r,fig.height=15}
+#prepare data
+indat<-transects_zero %>% filter(Plant %in% rownames(Dint)) %>% mutate(n=(n>0)*1)
+indat$Plant<-factor(indat$Plant,levels=rownames(Dint))
+indat$jPlant<-as.numeric(indat$Plant)
+indat$Factor_Date<-as.factor(indat$Date)
+indat$jDate<-as.numeric(indat$Factor_Date)
+jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
+
+#hold 2017 data aside for prediction
+to_predict<-indat %>% filter(Year %in% "2017")
+indat<-indat %>% filter(!Year %in% "2017")
+
+#give index positions
+to_predict$Index<-1:nrow(to_predict)
+indat$Index<-1:nrow(indat)
+```
+
+```{r}
+#Source model
+source("model/occ_attraction.R")
+
+#print model
+writeLines(readLines("model/occ_attraction.R"))
+
+#Run Model
+runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
+  
+  #Parameters to track
+  ParsStage <- c("alpha","fit","fitnew","discrepancy","lambda_cov","e","omega","fitpred","Ynew","prediction","gamma")
+  
+  #Jags Data
+
+  Dat<-list(
+    Y=Yobs_dat$n,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    Nobs=length(Yobs_dat$n),
+    zeros=rep(0,max(c(Yobs_dat$jPlant))),
+    Date=Yobs_dat$jDate,
+    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
+    D=D,
+    I=I,
+    
+    #Prediction data
+    Ypred=Ynew_dat$n,
+    Ypred_plant=Ynew_dat$jPlant,
+    Ypred_date=Ynew_dat$jDate,
+    Npreds=length(Ynew_dat$n))
+    
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$interaction_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
+```
+
+#Get Chains
+```{r} 
+getChains<-function(mod,indat,to_predict){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+  #single index
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jPlant=sv)
+    })
+  
+    #double index
+  splitpc[c("e")]<-lapply(
+    splitpc[c("e")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jPlant","jDate")
+    pc<-data.frame(x,sv)
+    })
+  
+  #ragged index - observed
+  splitpc[c("discrepancy","Ynew")]<-lapply(
+    splitpc[c("discrepancy","Ynew")],function(x){
+    #get index
+    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
+    
+    #merge with observed data to get species
+    ragged<-sv %>% left_join(indat[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
+    
+    pc<-data.frame(x,ragged)
+    return(pc)
+    })
+  
+  #ragged index - predicted
+  splitpc[c("prediction")]<-lapply(
+    splitpc[c("prediction")],function(x){
+    
+      #get index
+    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
+    
+    #merge with predicted data to get species
+    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
+    
+    pc<-data.frame(x,ragged)
+    return(pc)
+    })
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r}
+chains$interaction_attraction<-getChains(models$interaction_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
+```
+
+### Evaluate convergence
+
+```{r,fig.height=12,fig.width=15}
+chains$interaction_attraction %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+```
+
+```{r}
+chains$interaction_attraction %>% filter(parameter %in% c("fit","fitnew","lambda_cov","omega","fitpred","gamma")) %>%  ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
+```
+
+### Posterior estimates
+```{r,fig.height=10,fig.width=10}
+chains$interaction_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+```
+
+Mean interaction covariance
+
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-vCov*gamma
+      result<-reshape2::melt(result)
+      return(result)
+}
+
+result<-chains$interaction_attraction %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=Dint)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_continuous(low="white",high="red")
+```
+
+## Decay in interaction attraction
+
+```{r}
+
+effect<-function(lambda,D){
+  y<-as.numeric(exp(-lambda*D))
+  data.frame(lambda,Distance=as.numeric(D),Covariance=y)
+}
+
+phy_effect<-chains$interaction_attraction %>% filter(parameter=="lambda_cov") %>% group_by(Draw,chain) %>% do(effect(.$value,D)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
+
+ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Interaction Covariance")
+```
+
+## Repulsion
+
+```{r}
+#Source model
+source("model/occ_repulsion.R")
+
+#print model
+writeLines(readLines("model/occ_repulsion.R"))
+
+#Run Model
+runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
+  
+  
+  #Parameters to track
+  ParsStage <- c("alpha","fit","fitnew","discrepancy","lambda_cov","e","omega","fitpred","Ynew","prediction","gamma")
+  
+  #Jags Data
+
+  Dat<-list(
+    Y=Yobs_dat$n,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    Nobs=length(Yobs_dat$n),
+    zeros=rep(0,max(c(Yobs_dat$jPlant))),
+    Date=Yobs_dat$jDate,
+    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
+    D=D,
+    I=I,
+    
+    #Prediction data
+    Ypred=Ynew_dat$n,
+    Ypred_plant=Ynew_dat$jPlant,
+    Ypred_date=Ynew_dat$jDate,
+    Npreds=length(Ynew_dat$n))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$interaction_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
+```
+
+#Get Chains
+
+```{r}
+chains$interaction_repulsion<-getChains(models$interaction_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
+```
+
+### Evaluate convergence
+
+```{r,fig.height=12,fig.width=15}
+chains$interaction_repulsion %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+```
+
+```{r}
+chains$interaction_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov","omega","fitpred","gamma")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~parameter,scales="free",ncol=2)
+```
+
+### Posterior estimates
+```{r,fig.height=10,fig.width=10}
+chains$interaction_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
+```
+
+Mean interaction covariance martix
+
+```{r}
+tauC<-function(omega,gamma,I,D,lambda_cov=5){
+      C = exp(-lambda_cov * D)
+      vCov=omega*C + (1-omega) * I
+      result<-solve(vCov*gamma)
+      result<-reshape2::melt(result)
+      return(result)
+}
+
+result<-chains$interaction_repulsion %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=Dint)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+
+ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue")
+```
+
+## Decay in interaction repulsion
+
+```{r}
+
+effect_repulsion<-function(lambda,D){
+  y<-as.numeric(solve(exp(-lambda*D)))
+  data.frame(lambda,Distance=as.numeric(D),Covariance=y)
+}
+
+phyrepulse_effect<-chains$interaction_repulsion %>% filter(parameter=="lambda_cov") %>% group_by(Draw,chain) %>% do(effect_repulsion(.$value,D)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
+
+ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
 ```
 
 # Model Comparison

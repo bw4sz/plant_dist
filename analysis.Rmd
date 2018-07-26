@@ -130,28 +130,19 @@ models<-list()
 chains<-list()
 ```
 
-### Incomplete Detection
-
-There is a fixed probability of interactions among species, but our ability to observe this state is variable based on hummingbird species (e.g. differences in abundance).
 
 ```{r}
 #Source model
-source("model/intercept_interactions_detection.R")
+source("model/intercept_interactions.R")
 
 #print model
-writeLines(readLines("model/intercept_interactions_detection.R"))
+writeLines(readLines("model/intercept_interactions.R"))
 
 #Run Model
 runModel<-function(Yobs_dat){
   
   #Parameters to track
-  ParsStage <- c("alpha","omega")
-  
-  InitStage <- function(){
-    list(
-      z=array(dim=c(Dat$Birds,Dat$Plants,Dat$Cameras),data=1)
-    )
-  }
+  ParsStage <- c("alpha")
   
   #Jags Data
 
@@ -161,13 +152,11 @@ runModel<-function(Yobs_dat){
     Bird=Yobs_dat$jBird,
     Plant=Yobs_dat$jPlant,
     Plants=max(c(Yobs_dat$jPlant)),
-    Camera=Yobs_dat$jTime,
-    Cameras=max(Yobs_dat$jTime),
     Nobs=length(Yobs_dat$Yobs))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,inits = InitStage, parameters.to.save=ParsStage,model.file="model/intercept_interactions_detection.jags",n.thin=1,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/intercept_interactions.jags",n.thin=1,n.iter=1000,n.burnin=990,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -188,13 +177,6 @@ getChains<-function(mod){
   
   #Extract index
   splitpc<-split(pc,pc$parameter)
-  
-    #single index
-  splitpc[c("omega")]<-lapply(
-    splitpc[c("omega")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
-    pc<-data.frame(x,jBird=sv)
-    })
   
   #double index
   splitpc[c("alpha")]<-lapply(
@@ -217,23 +199,22 @@ chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(ja
 #alpha
 chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
 
-chains$intercept %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=value,fill=as.factor(chain))) + geom_density() + facet_wrap(~Hummingbird,scales="free") + labs(fill="Chain")
-
-```
-
-### P(Detection)
-
-```{r}
-chains$intercept %>% filter(parameter %in% c("omega")) %>% group_by(Hummingbird) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=ele)) + geom_pointrange(aes(x=Hummingbird,ymin=lower,ymax=upper,y=mean)) + labs(y="Detection Probability") + coord_flip()
 ```
 
 ### P(Interaction)
 
 ```{r,fig.height=8,fig.width=8}
-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="blue",mid="white",high="Red",midpoint=0.5,limits=c(0,1))
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="white",mid="blue",high="Red",midpoint=0.5,limits=c(0,1))
 ```
 
 # Niche Overlap
+
+Euclidean Distance in the P(Interaction)
+
+```{r}
+alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% acast(Hummingbird~Plant)
+write.csv(alpha_matrix,"PInteraction.csv")
+```
 
 #Phylogenetic model of species interactions
 
@@ -271,7 +252,7 @@ runModel<-function(Yobs_dat,I,vcov){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/intercept_phylogeny.jags",n.thin=1,n.iter=50000,n.burnin=49000,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/intercept_phylogeny.jags",n.thin=1,n.iter=100,n.burnin=0,n.chains=2,DIC=F)
     )
     return(model)
 }

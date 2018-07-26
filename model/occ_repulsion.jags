@@ -31,7 +31,7 @@
     logit(p_new[i])<-alpha[Ypred_plant[i]] + e[Ypred_plant[i],Ypred_date[i]]
     
     #squared predictive error
-    pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    pred_error[i] <- pow(Ypred[i] - p_new[i],2)
     }
     
     #Predictive Error

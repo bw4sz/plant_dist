@@ -5,9 +5,7 @@ cat("
     for (x in 1:Nobs){
     
     #observation
-    logit(phi[x])<-alpha[Bird[x],Plant[x]] 
-    
-    Yobs[x] ~ dbern(phi[x])
+    Yobs[x] ~ dbern(alpha[Bird[x],Plant[x]] )
     
     }
     
@@ -20,7 +18,7 @@ cat("
     
     #Intercept
     #logit prior, then transform for plotting
-    alpha[i,j] ~ dnorm(0,0.386)
+    alpha[i,j] ~ dbeta(1,1)
     } 
     }
 

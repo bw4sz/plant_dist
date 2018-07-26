@@ -29,7 +29,7 @@
     prediction[i] ~ dbern(alpha[Ypred_plant[i]])
     
     #squared predictive error
-    pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    pred_error[i] <- pow(Ypred[i] - alpha[Ypred_plant[i]],2)
     }
     
     #Predictive Error
