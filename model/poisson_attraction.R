@@ -1,4 +1,4 @@
-sink("model/poisson_attraction.jags")
+sink("model/Poisson_attraction.jags")
 cat("
     model {
     
@@ -9,11 +9,11 @@ cat("
       log(p[x]) <- alpha[Plant[x]] + e[Plant[x],Date[x]]
   
       #Residuals
-      discrepancy[x] <- pow(Y[x] - alpha[Plant[x]],2)
+      discrepancy[x] <- pow(Y[x] - p[x],2)
       
       #Assess Model Fit
       Ynew[x] ~ dpois(p[x])
-      discrepancy.new[x]<-pow(Ynew[x] - alpha[Plant[x]],2)
+      discrepancy.new[x]<-pow(Ynew[x] - p[x],2)
     
     }
     
@@ -32,7 +32,7 @@ cat("
     log(p_new[i])<-alpha[Ypred_plant[i]] + e[Ypred_plant[i],Ypred_date[i]]
     
     #squared predictive error
-    pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    pred_error[i] <- pow(Ypred[i] - p_new[i],2)
     }
     
     #Predictive Error

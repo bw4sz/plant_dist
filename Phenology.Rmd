@@ -155,12 +155,12 @@ ggplot(transects_zero %>% filter(!n==0),aes(x=Plant,y=ele)) + geom_boxplot() + c
 
 ## Species by transect matrix
 
-```{r}
+```{r,fig.width=20}
 #first observation of 2017
 first_date<-transects_zero %>% ungroup() %>% filter(Year==2017) %>% filter(julian==min(julian)) 
 
-ggplot(transects_zero,aes(x=Plant,y=Date,fill=n>0,col=Year)) + geom_tile()  + 
-  coord_flip() + theme(axis.text.x =element_blank()) + labs(y="Observations",x="Species",fill="Flowering")  + scale_fill_manual(values=c("white","black")) 
+ggplot(transects_zero,aes(x=Plant,y=Date,fill=log(n),col=Year)) + geom_tile()  + 
+  coord_flip() + theme(axis.text.x =element_blank()) + labs(y="Observations",x="Species",fill="Flowering")  + scale_fill_continuous(low="white",high="red")
 ggsave("Figures/matrix.svg",height=3,width=11)
 ```
 
@@ -172,13 +172,12 @@ ggplot(a,aes(x=Date)) + geom_linerange(aes(ymin=min,ymax=max))
 ggplot(a,aes(x=Date)) + geom_point(aes(y=n,size=n,col=n<5))
 ```
 
-Need to cut into better slices?
 
 # Count model of species phenology
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% mutate(n=(n>0)*1)
+indat<-transects_zero
 
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
@@ -197,10 +196,10 @@ indat$Index<-1:nrow(indat)
 
 ```{r}
 #Source model
-source("model/occ_baseline.R")
+source("model/Poisson_baseline.R")
 
 #print model
-writeLines(readLines("model/occ_baseline.R"))
+writeLines(readLines("model/Poisson_baseline.R"))
 
 #Run Model
 runModel<-function(Yobs_dat,Ynew_dat){
@@ -225,7 +224,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_baseline.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -315,7 +314,7 @@ ggplot(preds) + geom_ribbon(aes(x=ele,ymin=lower,ymax=upper),alpha=0.5)+ facet_w
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% filter(Plant %in% phy$tip.label) %>% mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% phy$tip.label)
 indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
 indat$jPlant<-as.numeric(indat$Plant)
 indat$Factor_Date<-as.factor(indat$Date)
@@ -333,10 +332,10 @@ indat$Index<-1:nrow(indat)
 
 ```{r}
 #Source model
-source("model/occ_attraction.R")
+source("model/Poisson_attraction.R")
 
 #print model
-writeLines(readLines("model/occ_attraction.R"))
+writeLines(readLines("model/Poisson_attraction.R"))
 
 #Run Model
 runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
@@ -365,7 +364,7 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -463,7 +462,7 @@ tauC<-function(omega,gamma,I,D,lambda_cov=5){
 
 result<-chains$phylogenetic_attraction %>% filter(parameter %in% c("omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC(omega=.$omega,gamma=.$gamma,I=I,D=D)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
-ggplot(result,aes(x=Var1,y=Var2,fill=lower)) + geom_tile() + scale_fill_continuous(low="white",high="red")
+ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_continuous(low="white",high="red")
 ```
 
 
@@ -485,10 +484,10 @@ ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 
 ```{r}
 #Source model
-source("model/occ_repulsion.R")
+source("model/Poisson_repulsion.R")
 
 #print model
-writeLines(readLines("model/occ_repulsion.R"))
+writeLines(readLines("model/Poisson_repulsion.R"))
 
 #Run Model
 runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
@@ -518,7 +517,7 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -611,12 +610,6 @@ indat$Index<-1:nrow(indat)
 ```
 
 ```{r}
-#Source model
-source("model/occ_attraction.R")
-
-#print model
-writeLines(readLines("model/occ_attraction.R"))
-
 models$trait_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
 ```
 
@@ -666,12 +659,6 @@ ggplot(trait_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin
 ## Repulsion
 
 ```{r}
-#Source model
-source("model/occ_repulsion.R")
-
-#print model
-writeLines(readLines("model/occ_repulsion.R"))
-
 models$trait_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
 ```
 
@@ -741,44 +728,6 @@ indat$Index<-1:nrow(indat)
 ```
 
 ```{r}
-#Source model
-source("model/occ_attraction.R")
-
-#print model
-writeLines(readLines("model/occ_attraction.R"))
-
-#Run Model
-runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
-  
-  #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","lambda_cov","e","omega","fitpred","Ynew","prediction","gamma")
-  
-  #Jags Data
-
-  Dat<-list(
-    Y=Yobs_dat$n,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$n),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    Date=Yobs_dat$jDate,
-    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
-    D=D,
-    I=I,
-    
-    #Prediction data
-    Ypred=Ynew_dat$n,
-    Ypred_plant=Ynew_dat$jPlant,
-    Ypred_date=Ynew_dat$jDate,
-    Npreds=length(Ynew_dat$n))
-    
-  #MCMC options
-    system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_attraction.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
-    )
-    return(model)
-}
-
 models$interaction_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
 ```
 
@@ -892,45 +841,6 @@ ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-#Source model
-source("model/occ_repulsion.R")
-
-#print model
-writeLines(readLines("model/occ_repulsion.R"))
-
-#Run Model
-runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
-  
-  
-  #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","lambda_cov","e","omega","fitpred","Ynew","prediction","gamma")
-  
-  #Jags Data
-
-  Dat<-list(
-    Y=Yobs_dat$n,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$n),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    Date=Yobs_dat$jDate,
-    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
-    D=D,
-    I=I,
-    
-    #Prediction data
-    Ypred=Ynew_dat$n,
-    Ypred_plant=Ynew_dat$jPlant,
-    Ypred_date=Ynew_dat$jDate,
-    Npreds=length(Ynew_dat$n))
-  
-  #MCMC options
-    system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/occ_repulsion.jags",n.thin=1,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
-    )
-    return(model)
-}
-
 models$interaction_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
 ```
 

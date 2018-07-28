@@ -4,14 +4,14 @@
     for (x in 1:Nobs){
     
     #Observation of a flowering plant
-    Y[x] ~ dpois(lambda[Plant[x]])
+    Y[x] ~ dpois(alpha[Plant[x]])
     
     #Residuals
-    discrepancy[x] <- pow(Y[x] - lambda[Plant[x]],2)
+    discrepancy[x] <- pow(Y[x] - alpha[Plant[x]],2)
     
     #Assess Model Fit
-    Ynew[x] ~ dpois(lambda[Plant[x]])
-    discrepancy.new[x]<-pow(Ynew[x] - lambda[Plant[x]],2)
+    Ynew[x] ~ dpois(alpha[Plant[x]])
+    discrepancy.new[x]<-pow(Ynew[x] - alpha[Plant[x]],2)
     
     }
     
@@ -26,10 +26,10 @@
     #predict value
     
     #Observation - probability of flowering
-    prediction[i] ~ dpois(lambda[Ypred_plant[i]])
+    prediction[i] ~ dpois(alpha[Ypred_plant[i]])
     
     #squared predictive error
-    pred_error[i] <- pow(Ypred[i] - prediction[i],2)
+    pred_error[i] <- pow(Ypred[i] - alpha[Ypred_plant[i]],2)
     }
     
     #Predictive Error
@@ -43,7 +43,7 @@
     
     #Intercept
     #Intercept flowering count
-    lambda[j] ~ dunif(0,100)
+    alpha[j] ~ dunif(0,100)
     
     } 
     
