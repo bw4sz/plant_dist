@@ -66,7 +66,7 @@ cat("
     
     #Intercept
     #Intercept flowering count
-    alpha[j] ~ dnorm(0,0.0001)
+    alpha[j] = 0
     
     } 
     

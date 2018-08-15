@@ -582,7 +582,7 @@ ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% filter(Plant %in% phy$tip.label) %>% mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% phy$tip.label) 
 
 ```
 
@@ -593,7 +593,7 @@ Dtraits<-as.matrix(dist(traits[,-1]))
 Dtraits<-Dtraits/max(Dtraits)
 
 #filter data to match traits
-indat<-transects_zero %>% filter(Plant %in% rownames(traits)) %>% mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% rownames(traits))
 indat$Plant<-factor(indat$Plant,levels=rownames(traits))
 indat$jPlant<-as.numeric(indat$Plant)
 indat$Factor_Date<-as.factor(indat$Date)
@@ -711,7 +711,7 @@ ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(a
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% filter(Plant %in% rownames(Dint)) %>% mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% rownames(Dint))
 indat$Plant<-factor(indat$Plant,levels=rownames(Dint))
 indat$jPlant<-as.numeric(indat$Plant)
 indat$Factor_Date<-as.factor(indat$Date)
@@ -976,7 +976,7 @@ ggplot(est_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 
 ```{r,fig.height=10,fig.width=10}
 
-fitstat<-allchains %>% filter(parameter %in% c("fit","fitnew")) %>% select(Model,Effect,Draw,chain,parameter,value)  %>% spread(key=parameter,value=value) 
+fitstat<-allchains %>% filter(parameter %in% c("fit","fitnew"),!Model=="baseline") %>% select(Model,Effect,Draw,chain,parameter,value)  %>% spread(key=parameter,value=value) 
 
 ymin<-min(fitstat$fit)
 ymax<-max(fitstat$fit)
@@ -992,7 +992,16 @@ fitstat %>% group_by(Model) %>% summarize(p=sum((fitnew>fit)/n()))
 
 ```{r}
 allchains %>% filter(parameter %in% "fit") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+
+allchains %>% filter(parameter %in% "fit",!Model %in% "baseline") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(desc(mean)) %>% kable() %>% kable_styling()
 ```
+
+### Without baseline
+
+```{r}
+allchains %>% filter(parameter %in% "fit",!Model %in% "baseline") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+```
+
 
 ## By Species
 
@@ -1000,15 +1009,37 @@ allchains %>% filter(parameter %in% "fit") %>% mutate(value=value) %>%  group_by
 allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
-Zoom in 
-```{r,fig.height=10,fig.width=12}
-allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
+Without baseline
+
+```{r}
+allchains %>% filter(parameter %in% "discrepancy",!Model=="baseline") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
-#Prediction
+Zoom in 
+```{r,fig.height=10,fig.width=12}
+allchains %>% filter(parameter %in% "discrepancy",!Model=="baseline") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
+```
+
+## 
+
+```{r}
+allchains %>% dplyr::filter(parameter=="Ynew",Model=="phylogenetic_attraction") %>% dplyr::group_by(Plant,Model,Index)  %>% dplyr::summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(indat) %>%  ggplot(.) + geom_point(aes(x=n,y=lower,col=Model),alpha=0.5) + facet_wrap(~Plant,scales="free") + geom_abline()
+```
+
+# Prediction
 
 ```{r}
 allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw()
+```
+
+```{r}
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw()
+```
+
+### Tables
+
+```{r}
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(desc(mean)) %>% kable() %>% kable_styling()
 ```
 
 ```{r}
