@@ -2,18 +2,19 @@ sink("model/Poisson_baseline.jags")
 cat("
     model {
     
-    for (x in 1:Nobs){
-    
+    for (x in 1:Dates){
+    for (y in 1:Plants){
     #Observation of a flowering plant
-    Y[x] ~ dpois(alpha[Plant[x]])
+    Y[x,y] ~ dpois(p[x,y])
+    log(p[x,y]) <- alpha[y]
     
     #Residuals
-    discrepancy[x] <- pow(Y[x] - alpha[Plant[x]],2)
+    discrepancy[x,y] <- pow(Y[x,y] - p[x,y],2)
     
     #Assess Model Fit
-    Ynew[x] ~ dpois(alpha[Plant[x]])
-    discrepancy.new[x]<-pow(Ynew[x] - alpha[Plant[x]],2)
-    
+    Ynew[x,y] ~ dpois(p[x,y])
+    discrepancy.new[x,y]<-pow(Ynew[x,y] - p[x,y],2)
+    }
     }
     
     #Sum discrepancy
@@ -22,15 +23,18 @@ cat("
     
     #Prediction
     
-    for(i in 1:Npreds){
+    for (x in 1:NewDates){
+    for (y in 1:Plants){
     
     #predict value
     
     #Observation - probability of flowering
-    prediction[i] ~ dpois(alpha[Ypred_plant[i]])
+    prediction[x,y] ~ dpois(p_new[x,y])
+    log(p_new[x,y])<-alpha[y]
     
     #squared predictive error
-    pred_error[i] <- pow(Ypred[i] - alpha[Ypred_plant[i]],2)
+    pred_error[x,y] <- pow(Ypred[x,y] - prediction[x,y],2)
+    }
     }
     
     #Predictive Error
@@ -44,10 +48,10 @@ cat("
     
     #Intercept
     #Intercept flowering count
-    alpha[j] ~ dunif(0,100)
+    alpha[j] ~ dnorm(0,0.001)
     
     } 
-    
+
     }
     ",fill=TRUE)
 

@@ -3,7 +3,9 @@ library(mvtnorm)
 library(reshape2)
 
 ##Attraction
-lambda=5
+lambda=1
+omega=1
+gamma=5
 
 #distance
 d<-as.matrix(cophenetic(phy))
@@ -11,7 +13,9 @@ d<-d/max(d)
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
-r<-data.frame(rmvnorm(1e4,mean=means,C))
+vCov=(omega*C[,] + (1-omega) * I)*gamma
+r<-data.frame(rmvnorm(1e4,mean=means,vCov))
+
 colnames(r)<-phy$tip.label
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Gasteranthus quitensis`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()
@@ -20,6 +24,8 @@ ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()
 ##Calculate correlation
 sim_cor<-function(lambda){
   C<-exp(-lambda*d)
+  vCov=(omega*C[,] + (1-omega) * I)*gamma
+  
   r<-data.frame(mvtnorm::rmvnorm(1e4,mean=means,C[,]))
   
   #rename columns to match
@@ -35,7 +41,7 @@ sim_cor<-function(lambda){
 
 results<-list()
 
-lambdas<-seq(0,10,1)
+lambdas<-seq(0,5,0.5)
 
 for(y in 1:length(lambdas) ){
   results[[y]]<-sim_cor(lambda=lambdas[[y]])

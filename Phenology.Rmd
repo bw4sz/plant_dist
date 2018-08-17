@@ -28,13 +28,14 @@ library(tidyr)
 library(dplyr)
 
 #optionally load
-#load("/Users/ben/Dropbox/Gesner/Phenology.RData")
+load("/Users/ben/Dropbox/Gesner/Phenology.RData")
 
 #holder for models and chains
 models<-list()
 chains<-list()
 discrepancy<-list()
 ```
+
 # Transects
 ```{r}
 #transects
@@ -172,7 +173,6 @@ ggplot(a,aes(x=Date)) + geom_linerange(aes(ymin=min,ymax=max))
 ggplot(a,aes(x=Date)) + geom_point(aes(y=n,size=n,col=n<5))
 ```
 
-
 # Count model of species phenology
 
 ```{r,fig.height=15}
@@ -182,6 +182,8 @@ indat<-transects_zero
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
 indat$jPlant<-as.numeric(indat$Plant)
+indat$Factor_Date<-as.factor(indat$Date)
+indat$jDate<-as.numeric(indat$Factor_Date)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
 
@@ -189,9 +191,9 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
 
-#give index positions
-to_predict$Index<-1:nrow(to_predict)
-indat$Index<-1:nrow(indat)
+#Shape into observation matrix
+indat_matrix<-reshape2::acast(indat,jDate~Plant,value.var = "n") 
+predict_matrix<-reshape2::acast(to_predict,jDate~Plant,value.var = "n")
 ```
 
 ```{r}
@@ -209,31 +211,32 @@ runModel<-function(Yobs_dat,Ynew_dat){
   
   #Jags Data
 
-  Dat<-list(
-    
-    #Observed data
-    Y=Yobs_dat$n,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$n),
 
+  Dat<-list(
+    Y=Yobs_dat,
+    Plants=ncol(Yobs_dat),
+    Nobs=length(Yobs_dat),
+    zeros=rep(0,ncol(Yobs_dat)),
+    Dates=nrow(Yobs_dat),
+    
     #Prediction data
-    Ypred=Ynew_dat$n,
-    Ypred_plant=Ynew_dat$jPlant,
-    Npreds=length(Ynew_dat$n))
+    Ypred=Ynew_dat,
+    NewDates=nrow(Ynew_dat),
+    Npreds=length(Ynew_dat))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_baseline.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_baseline.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$baseline<-runModel(Yobs_dat=indat,Ynew_dat=to_predict)
+models$baseline<-runModel(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix)
 ```
 
+#Get Chains
 ```{r} 
-getChains<-function(mod,indat,to_predict){
+getChains<-function(mod){
   
   pc<-reshape2::melt(mod$BUGSoutput$sims.array)
   colnames(pc)<-c("Draw","chain","par","value")
@@ -251,37 +254,20 @@ getChains<-function(mod,indat,to_predict){
     pc<-data.frame(x,jPlant=sv)
     })
   
-  #ragged index - observed
-  splitpc[c("discrepancy","Ynew")]<-lapply(
-    splitpc[c("discrepancy","Ynew")],function(x){
-    #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with indat to get species
-    ragged<-sv %>% left_join(indat[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
+    #double index
+  splitpc[c("Ynew","discrepancy","prediction")]<-lapply(
+    splitpc[c("Ynew","discrepancy","prediction")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jDate","jPlant")
+    pc<-data.frame(x,sv)
     })
   
-    #ragged index - prediction
-  splitpc[c("prediction")]<-lapply(
-    splitpc[c("prediction")],function(x){
-    #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with indat to get species
-    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
-    })
   chains<-bind_rows(splitpc)
 return(chains)}
 ```
 
 ```{r}
-chains$baseline<-getChains(models$baseline,indat,to_predict) %>% left_join(jagsIndexPlants)
+chains$baseline<-getChains(models$baseline) %>% left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -297,15 +283,6 @@ chains$baseline %>% filter(parameter %in% c("fit","fitnew","fitpred")) %>%      
 ### Posterior estimates
 ```{r,fig.height=10,fig.width=10}
 chains$baseline %>% filter(parameter %in% c("alpha","fit","fitnew","fitpred")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=1,scales="free")
-```
-
-### Error by elevation for estimated data 
-
-```{r,fig.height=11}
-
-preds<-chains$baseline %>% filter(parameter %in% c("discrepancy")) %>% group_by(Plant,Index) %>% mutate(jPlant=as.numeric(as.character(jPlant))) %>% inner_join(indat) %>% group_by(Plant,ele) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
-
-ggplot(preds) + geom_ribbon(aes(x=ele,ymin=lower,ymax=upper),alpha=0.5)+ facet_wrap(~Plant) 
 ```
 
 # Phylogeny
@@ -325,9 +302,10 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
 
-#give index positions
-to_predict$Index<-1:nrow(to_predict)
-indat$Index<-1:nrow(indat)
+#Shape into observation matrix
+indat_matrix<-reshape2::acast(indat,jDate~Plant,value.var = "n") 
+predict_matrix<-reshape2::acast(to_predict,jDate~Plant,value.var = "n")
+
 ```
 
 ```{r}
@@ -346,35 +324,32 @@ runModel_attraction<-function(Yobs_dat,Ynew_dat,D=D){
   #Jags Data
 
   Dat<-list(
-    Y=Yobs_dat$n,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$n),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    Date=Yobs_dat$jDate,
-    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
+    Y=Yobs_dat,
+    Plants=ncol(Yobs_dat),
+    Nobs=length(Yobs_dat),
+    zeros=rep(0,ncol(Yobs_dat)),
+    Dates=nrow(Yobs_dat),
     D=D,
     I=I,
     
     #Prediction data
-    Ypred=Ynew_dat$n,
-    Ypred_plant=Ynew_dat$jPlant,
-    Ypred_date=Ynew_dat$jDate,
-    Npreds=length(Ynew_dat$n))
+    Ypred=Ynew_dat,
+    NewDates=nrow(Ynew_dat),
+    Npreds=length(Ynew_dat))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_attraction.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_attraction.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$phylogenetic_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
+models$phylogenetic_attraction<-runModel_attraction(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=D)
 ```
 
 #Get Chains
 ```{r} 
-getChains<-function(mod,indat,to_predict){
+getChains<-function(mod){
   
   pc<-reshape2::melt(mod$BUGSoutput$sims.array)
   colnames(pc)<-c("Draw","chain","par","value")
@@ -393,51 +368,25 @@ getChains<-function(mod,indat,to_predict){
     })
   
     #double index
-  splitpc[c("e")]<-lapply(
-    splitpc[c("e")],function(x){
+  splitpc[c("e","Ynew","discrepancy","prediction")]<-lapply(
+    splitpc[c("e","Ynew","discrepancy","prediction")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
-    colnames(sv)<-c("jPlant","jDate")
+    colnames(sv)<-c("jDate","jPlant")
     pc<-data.frame(x,sv)
     })
   
-  #ragged index - observed
-  splitpc[c("discrepancy","Ynew")]<-lapply(
-    splitpc[c("discrepancy","Ynew")],function(x){
-    #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with observed data to get species
-    ragged<-sv %>% left_join(indat[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
-    })
-  
-  #ragged index - predicted
-  splitpc[c("prediction")]<-lapply(
-    splitpc[c("prediction")],function(x){
-    
-      #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with predicted data to get species
-    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
-    })
   chains<-bind_rows(splitpc)
 return(chains)}
 ```
 
 ```{r}
-chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
 
 ```{r,fig.height=12,fig.width=15}
-chains$phylogenetic_attraction %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+chains$phylogenetic_attraction %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
 ```
 
 ```{r}
@@ -499,42 +448,39 @@ runModel_repulsion<-function(Yobs_dat,Ynew_dat,D=D){
   #Jags Data
 
   Dat<-list(
-    Y=Yobs_dat$n,
-    Plant=Yobs_dat$jPlant,
-    Plants=max(c(Yobs_dat$jPlant)),
-    Nobs=length(Yobs_dat$n),
-    zeros=rep(0,max(c(Yobs_dat$jPlant))),
-    Date=Yobs_dat$jDate,
-    Dates=max(c(Ynew_dat$jDate,Yobs_dat$jDate)),
+    Y=Yobs_dat,
+    Plants=ncol(Yobs_dat),
+    Nobs=length(Yobs_dat),
+    zeros=rep(0,ncol(Yobs_dat)),
+    Dates=nrow(Yobs_dat),
     D=D,
     I=I,
     
     #Prediction data
-    Ypred=Ynew_dat$n,
-    Ypred_plant=Ynew_dat$jPlant,
-    Ypred_date=Ynew_dat$jDate,
-    Npreds=length(Ynew_dat$n))
+    Ypred=Ynew_dat,
+    NewDates=nrow(Ynew_dat),
+    Npreds=length(Ynew_dat))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_repulsion.jags",n.thin=1,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/Poisson_repulsion.jags",n.thin=1,n.iter=10000,n.burnin=9800,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$phylogenetic_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=D)
+models$phylogenetic_repulsion<-runModel_repulsion(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=D)
 ```
 
 #Get Chains
 
 ```{r}
-chains$phylogenetic_repulsion<-getChains(models$phylogenetic_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$phylogenetic_repulsion<-getChains(models$phylogenetic_repulsion) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
 
-```{r,fig.height=12,fig.width=15}
-chains$phylogenetic_repulsion %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+```{r,fig.height=10,fig.width=12}
+chains$phylogenetic_repulsion %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
 ```
 
 ```{r}
@@ -604,25 +550,25 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
 
-#give index positions
-to_predict$Index<-1:nrow(to_predict)
-indat$Index<-1:nrow(indat)
+#Shape into observation matrix
+indat_matrix<-reshape2::acast(indat,jDate~Plant,value.var = "n") 
+predict_matrix<-reshape2::acast(to_predict,jDate~Plant,value.var = "n")
 ```
 
 ```{r}
-models$trait_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
+models$trait_attraction<-runModel_attraction(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=Dtraits)
 ```
 
 #Get Chains
 
 ```{r}
-chains$trait_attraction<-getChains(models$trait_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$trait_attraction<-getChains(models$trait_attraction) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
 
 ```{r,fig.height=12,fig.width=15}
-chains$trait_attraction %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+chains$trait_attraction %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
 ```
 
 ```{r}
@@ -659,19 +605,19 @@ ggplot(trait_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin
 ## Repulsion
 
 ```{r}
-models$trait_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits)
+models$trait_repulsion<-runModel_repulsion(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=Dtraits)
 ```
 
 #Get Chains
 
 ```{r}
-chains$trait_repulsion<-getChains(models$trait_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$trait_repulsion<-getChains(models$trait_repulsion) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
 
 ```{r,fig.height=12,fig.width=15}
-chains$trait_repulsion %>% filter(parameter %in% c("alpha","e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
+chains$trait_repulsion %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(parameter~Plant,scales="free")
 ```
 
 ```{r}
@@ -705,6 +651,7 @@ traitrepulse_effect<-chains$trait_repulsion %>% filter(parameter=="lambda_cov") 
 ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
 ```
 
+
 # Interaction
 
 ## Attraction
@@ -722,75 +669,17 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(lev
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
 
-#give index positions
-to_predict$Index<-1:nrow(to_predict)
-indat$Index<-1:nrow(indat)
+#Shape into observation matrix
+indat_matrix<-reshape2::acast(indat,jDate~Plant,value.var = "n") 
+predict_matrix<-reshape2::acast(to_predict,jDate~Plant,value.var = "n")
 ```
 
 ```{r}
-models$interaction_attraction<-runModel_attraction(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
-```
-
-#Get Chains
-```{r} 
-getChains<-function(mod,indat,to_predict){
-  
-  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
-  colnames(pc)<-c("Draw","chain","par","value")
-  
-  #extract parameter name
-  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
-  
-  #Extract index
-  splitpc<-split(pc,pc$parameter)
-  
-  #single index
-  splitpc[c("alpha")]<-lapply(
-    splitpc[c("alpha")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
-    pc<-data.frame(x,jPlant=sv)
-    })
-  
-    #double index
-  splitpc[c("e")]<-lapply(
-    splitpc[c("e")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
-    colnames(sv)<-c("jPlant","jDate")
-    pc<-data.frame(x,sv)
-    })
-  
-  #ragged index - observed
-  splitpc[c("discrepancy","Ynew")]<-lapply(
-    splitpc[c("discrepancy","Ynew")],function(x){
-    #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with observed data to get species
-    ragged<-sv %>% left_join(indat[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
-    })
-  
-  #ragged index - predicted
-  splitpc[c("prediction")]<-lapply(
-    splitpc[c("prediction")],function(x){
-    
-      #get index
-    sv<-data.frame(Index=as.numeric(str_match(x$par,"(\\w+)\\[(\\d+)]")[,3]))
-    
-    #merge with predicted data to get species
-    ragged<-sv %>% left_join(to_predict[,c("Index","jPlant")]) %>% mutate(jPlant=as.character(jPlant))
-    
-    pc<-data.frame(x,ragged)
-    return(pc)
-    })
-  chains<-bind_rows(splitpc)
-return(chains)}
+models$interaction_attraction<-runModel_attraction(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=Dint)
 ```
 
 ```{r}
-chains$interaction_attraction<-getChains(models$interaction_attraction,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$interaction_attraction<-getChains(models$interaction_attraction) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -841,13 +730,13 @@ ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-models$interaction_repulsion<-runModel_repulsion(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint)
+models$interaction_repulsion<-runModel_repulsion(Yobs_dat=indat_matrix,Ynew_dat=predict_matrix,D=Dint)
 ```
 
 #Get Chains
 
 ```{r}
-chains$interaction_repulsion<-getChains(models$interaction_repulsion,indat,to_predict) %>%  left_join(jagsIndexPlants)
+chains$interaction_repulsion<-getChains(models$interaction_repulsion) %>%  left_join(jagsIndexPlants)
 ```
 
 ### Evaluate convergence
@@ -1020,10 +909,10 @@ Zoom in
 allchains %>% filter(parameter %in% "discrepancy",!Model=="baseline") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
 ```
 
-## 
+## By date
 
 ```{r}
-allchains %>% dplyr::filter(parameter=="Ynew",Model=="phylogenetic_attraction") %>% dplyr::group_by(Plant,Model,Index)  %>% dplyr::summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(indat) %>%  ggplot(.) + geom_point(aes(x=n,y=lower,col=Model),alpha=0.5) + facet_wrap(~Plant,scales="free") + geom_abline()
+allchains %>% dplyr::filter(parameter=="Ynew") %>% dplyr::group_by(Model,Plant,jDate)  %>% dplyr::summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% mutate(jDate=as.numeric(jDate)) %>% inner_join(indat) %>%   ggplot(.) + geom_ribbon(aes(x=n,ymin=lower,ymax=upper,fill=Model),alpha=0.5) + facet_wrap(~Plant,scales="free") + geom_abline()
 ```
 
 # Prediction
