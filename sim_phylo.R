@@ -3,9 +3,9 @@ library(mvtnorm)
 library(reshape2)
 
 ##Attraction
-lambda=1
+lambda=2
 omega=1
-gamma=5
+gamma=1
 
 #distance
 d<-as.matrix(cophenetic(phy))
@@ -55,10 +55,13 @@ ggplot(results,aes(x=distance,y=cor,col=lambda)) + geom_point() + geom_line(aes(
 
 #distance
 lambda=5
+omega=1
+gamma=0.1
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
-r<-data.frame(rmvnorm(1e4,mean=means,solve(C)))
+vCov=(omega*C[,] + (1-omega) * I)*gamma
+r<-data.frame(rmvnorm(1e4,mean=means,solve(vCov)))
 
 colnames(r)<-phy$tip.label
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Gasteranthus quitensis`)) + geom_point()
@@ -66,10 +69,11 @@ ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()
 
 ##Calculate correlation
-sim_cor<-function(lambda){
-  print(lambda)
+sim_cor<-function(lambda,omega=0.9,gamma=1){
+  means<-rep(0,nrow(d))
   C<-exp(-lambda*d)
-  r<-data.frame(mvtnorm::rmvnorm(1e4,mean=means,solve(C[,])))
+  vCov=(omega*C[,] + (1-omega) * I)*gamma
+  r<-data.frame(rmvnorm(1e4,mean=means,solve(vCov)))
   
   #rename columns to match
   colnames(r)<-phy$tip.label
@@ -84,7 +88,7 @@ sim_cor<-function(lambda){
 
 results<-list()
 
-lambdas<-seq(0.1,5,0.5)
+lambdas<-seq(0,5,0.5)
 
 for(y in 1:length(lambdas) ){
   results[[y]]<-sim_cor(lambda=lambdas[[y]])
