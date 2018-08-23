@@ -139,15 +139,22 @@ transects$Month<-as.numeric(format(as.POSIXlt(transects$Date),"%m"))
 transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
 
 sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))
-zero_count<-expand.grid(Plant=unique(sumf$Plant),Site=unique(sumf$Site),Month=unique(sumf$Month),Year=unique(sumf$Year),n=0)
+
+all_plants<-function(dat){
+  data.frame(dat,Plant=unique(sumf$Plant),n=0)
+}
+
+#Which combinations are sampled.
+sampled<-sumf %>% ungroup() %>% distinct(Site,Month,Year) %>% arrange(Site,Month,Year) %>% group_by(Site,Month,Year) %>% do(all_plants(.))
 
 #merge elevation for 0 count, get's mean elevation of that day
 mean_ele<-transects %>% group_by(Site,Month,Year) %>% summarize(ele=mean(ele))
-zero_count<-zero_count %>% anti_join(sumf,by=c("Plant","Site","Month","Year")) %>% inner_join(mean_ele)
+zero_count<-sampled %>% anti_join(sumf,by=c("Plant","Site","Month","Year")) %>% inner_join(mean_ele)
+
+
 transects_zero<-bind_rows(sumf,zero_count)
 
-#transects_zero %>% group_by(Plant,Year) %>%
-#ggplot(.,aes(x=as.numeric(julian),y=n,col=as.factor(Year))) + geom_point(size=0.1) + #geom_line(aes(group=as.factor(Year))) + facet_wrap(~Plant,scales="free",ncol=3) + labs(col="Year") + theme_bw()
+
 ```
 
 ## Species elevation ranges
@@ -220,7 +227,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
 
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -347,7 +354,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -809,11 +816,87 @@ alphas %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(v
 ```{r,fig.height=12,fig.width=10}
 
 allpars<-allchains %>% filter(!parameter %in% c("discrepancy")) %>% group_by(Model,Plant,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
-
-
-allpars %>% filter(parameter %in% "e") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant,scales="free",ncol=3) + coord_flip() + labs(y="E")
 ```
 
+
+### E: The effect of autocorrelation
+
+
+```{r}
+allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% filter(Site==1) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=inv.logit(mean))) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Effect on p(Occ)") 
+```
+
+# By site
+
+## 1300m - 1500m
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==1) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==1) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
+
+## 1500-1700m
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==2) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==2) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
+
+## 1700-1900 
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==3) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==3) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
+
+## 1900-2100m
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==4) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==4) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
+
+## 2100-2300m
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==5) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==5) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
+
+## 2300m - 2500m
+
+```{r}
+allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==6) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
+```
+
+
+```{r}
+ allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==6) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+
+```
 ## Omega: The magnitude of the effect of autocorrelation on mean flowering occurrence
 
 ```{r}
@@ -852,7 +935,7 @@ ymin<-min(fitstat$fit)
 ymax<-max(fitstat$fit)
 ab<-data.frame(x=seq(0,ymax,1),y=seq(0,ymax,1))
 
-ggplot(data=fitstat,aes(x=fit,y=fitnew)) + geom_point(aes(col=Model)) + theme_bw() + labs(x="Discrepancy of observed data",y="Discrepancy of replicated data",col="Model")  + ggtitle("Posterior predictive check") + coord_fixed() + geom_line(data=ab,aes(x=x,y=y),group=1,linetype="dashed") 
+ggplot(data=fitstat,aes(x=fit,y=fitnew)) + geom_point(aes(col=Model)) + theme_bw() + labs(x="Discrepancy of observed data",y="Discrepancy of replicated data",col="Model")  + ggtitle("Posterior predictive check") + coord_fixed() + geom_abline()
 
 #Bayesian p-value
 fitstat %>% group_by(Model) %>% summarize(p=sum((fitnew>fit)/n()))

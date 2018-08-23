@@ -5,7 +5,7 @@ library(reshape2)
 ##Attraction
 lambda=2
 omega=1
-gamma=1
+gamma=0.01
 
 #distance
 d<-as.matrix(cophenetic(phy))
@@ -15,18 +15,41 @@ means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
 vCov=(omega*C[,] + (1-omega) * I)*gamma
 r<-data.frame(rmvnorm(1e4,mean=means,vCov))
-
 colnames(r)<-phy$tip.label
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Gasteranthus quitensis`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()
 
 ##Calculate correlation
-sim_cor<-function(lambda){
+sim_vals<-function(lambda=5,omega=1,gamma=1){
   C<-exp(-lambda*d)
   vCov=(omega*C[,] + (1-omega) * I)*gamma
   
-  r<-data.frame(mvtnorm::rmvnorm(1e4,mean=means,C[,]))
+  r<-mvtnorm::rmvnorm(1e4,mean=means,vCov[,])
+  colnames(r)<-phy$tip.label
+  
+  mvcov<-melt(data.frame(inv.logit(r)))
+  dat<-mvcov %>% mutate(lambda=lambda,gamma=gamma,omega=omega)
+  return(dat)
+}
+results<-list()
+
+gammas<-seq(1,20,5)
+
+for(y in 1:length(gammas) ){
+  results[[y]]<-sim_vals(gamma=gammas[[y]])
+}
+
+results<-bind_rows(results)
+
+ggplot(results) + geom_density(aes(x=value,fill=as.factor(gamma))) + facet_wrap(~variable) 
+
+##Calculate correlation
+sim_cor<-function(lambda=5,omega=1,gamma=1){
+  C<-exp(-lambda*d)
+  vCov=(omega*C[,] + (1-omega) * I)*gamma
+  
+  r<-data.frame(mvtnorm::rmvnorm(1e4,mean=means,vCov[,]))
   
   #rename columns to match
   colnames(r)<-phy$tip.label
@@ -35,21 +58,21 @@ sim_cor<-function(lambda){
   mvcov<-melt(d)
   colnames(mvcov)<-c("sp1","sp2","distance")
   
-  dat<-cor_matrix %>% inner_join(mvcov)  %>% mutate(lambda=lambda)
+  dat<-cor_matrix %>% inner_join(mvcov)  %>% mutate(lambda=lambda,gamma=gamma,omega=omega)
   return(dat)
 }
 
 results<-list()
 
-lambdas<-seq(0,5,0.5)
+gammas<-seq(0,20,5)
 
-for(y in 1:length(lambdas) ){
-  results[[y]]<-sim_cor(lambda=lambdas[[y]])
+for(y in 1:length(gammas) ){
+  results[[y]]<-sim_cor(gamma=gammas[[y]])
 }
 
 results<-bind_rows(results)
 
-ggplot(results,aes(x=distance,y=cor,col=lambda)) + geom_point() + geom_line(aes(group=lambda)) 
+ggplot(results,aes(x=distance,y=cor,col=gamma)) + geom_point() + geom_line(aes(group=gamma)) 
 
 ##Repulsion
 
