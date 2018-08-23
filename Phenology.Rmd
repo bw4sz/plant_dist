@@ -137,8 +137,11 @@ ggplot(.,aes(x=julian,y=n)) + geom_point(size=2) + labs(col="Year") + theme_bw()
 transects$Year<-as.character(format(as.POSIXlt(transects$Date),"%Y"))
 transects$Month<-as.numeric(format(as.POSIXlt(transects$Date),"%m"))
 transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
+```
 
-sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))
+```{r}
+#limit to peak flowering, more than 5% of plants for the year are in bloom.
+sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n=(n >sum(n)*0.05)*1)
 
 all_plants<-function(dat){
   data.frame(dat,Plant=unique(sumf$Plant),n=0)
@@ -163,7 +166,7 @@ transects_zero<-bind_rows(sumf,zero_count)
 ggplot(transects_zero %>% filter(!n==0),aes(x=Plant,y=ele)) + geom_boxplot() + coord_flip()
 ```
 
-## Data Matrix
+## Flowering Data Matrix
 
 ```{r}
 
@@ -171,13 +174,18 @@ transects_zero<-transects_zero %>% ungroup() %>% mutate(Index=group_indices(.,Si
 ggplot(transects_zero) + geom_tile(aes(x=Index,y=Plant,fill=as.factor(n>0))) + labs(fill="Flowering")  + theme_bw()
 ```
 
+```{r,fig.height=20,fig.width=15}
+ggplot(transects_zero) + geom_tile(aes(x=as.factor(Month),y=Plant,fill=as.factor(n>0))) + labs(fill="Flowering")  + theme_bw() + facet_wrap(Year~Site) + scale_fill_manual(values=c("grey80","black")) + labs(x="Month")
+```
+
+
 ## Species by transect matrix
 
 # Count model of species phenology
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% mutate(n=(n>0)*1)
+indat<-transects_zero 
 
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
@@ -300,7 +308,7 @@ chains$baseline %>% filter(parameter %in% c("alpha","fit","fitnew","fitpred")) %
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% filter(Plant %in% phy$tip.label) %>%  mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% phy$tip.label)
 indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
 indat$jPlant<-as.numeric(indat$Plant)
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
@@ -535,7 +543,7 @@ Dtraits<-as.matrix(dist(traits[,-1]))
 Dtraits<-Dtraits/max(Dtraits)
 
 #filter data to match traits
-indat<-transects_zero %>% filter(Plant %in% rownames(traits))  %>%  mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% rownames(traits)) 
 
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
@@ -657,7 +665,7 @@ ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(a
 
 ```{r,fig.height=15}
 #prepare data
-indat<-transects_zero %>% filter(Plant %in% rownames(Dint))  %>%  mutate(n=(n>0)*1)
+indat<-transects_zero %>% filter(Plant %in% rownames(Dint))  
 
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
@@ -844,7 +852,6 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 ```{r}
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==2) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
 ```
-
 
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==2) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
