@@ -141,7 +141,7 @@ transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
 
 ```{r}
 #limit to peak flowering, more than 5% of plants for the year are in bloom.
-sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n=(n >sum(n)*0.05)*1)
+sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n >sum(n)*0.05) %>% mutate(n=(n>0)*1)
 
 all_plants<-function(dat){
   data.frame(dat,Plant=unique(sumf$Plant),n=0)
@@ -235,7 +235,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
 
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -362,7 +362,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -912,8 +912,14 @@ allpars %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=Model,y=mean)) + g
 
 ## Gamma: The variance of the effect of autocorrelation on mean flowering occurrence
 
-```{r,fig.height=12,fig.width=10}
+```{r,fig.height=6,fig.width=7}
 allpars %>% filter(parameter %in% "gamma") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Gamma")
+```
+
+## Lambda: The decay in autocorrelation effect
+
+```{r,fig.height=5,fig.width=7}
+allpars %>% filter(parameter %in% "lambda_cov") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="lambda")
 ```
 
 ## Decay in autocorrelation effect

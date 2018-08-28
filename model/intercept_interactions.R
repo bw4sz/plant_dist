@@ -5,7 +5,7 @@ cat("
     for (x in 1:Nobs){
     
     #observation
-    Yobs[x] ~ dbern(alpha[Bird[x],Plant[x]] )
+    Yobs[x] ~ dpois(alpha[Bird[x],Plant[x]] )
     
     }
     
@@ -18,7 +18,7 @@ cat("
     
     #Intercept
     #logit prior, then transform for plotting
-    alpha[i,j] ~ dbeta(1,1)
+    alpha[i,j] ~ dnorm(0,0.001)
     } 
     }
 

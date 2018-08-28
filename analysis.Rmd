@@ -68,7 +68,7 @@ Sum interaction matrix plotted in plant phylogenetic order.
 ```{r}
 m<-interactions %>% filter(Plant %in% phy$tip.label) %>% group_by(Hummingbird,Plant) %>% summarize(n=n())
 m$Plant<-factor(m$Plant,levels=phy$tip.label)
-ggplot(m,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))
+ggplot(m,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90)) + scale_fill_continuous(low="blue",high="Red")
 ```
 
 # Estimate interaction probability
@@ -81,7 +81,7 @@ ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme
 
 ```{r}
 #Convert to binary daily sampling
-dailydat<-interactions %>% group_by(ID,Date,ele,Plant,Hummingbird) %>% summarize(n=n()) %>% mutate(Yobs=(n>0)*1) %>% select(-n)
+dailydat<-interactions %>% group_by(ID,Date,ele,Plant,Hummingbird) %>% summarize(n=n()) %>% select(-n)
 ```
 
 ```{r}
@@ -131,12 +131,14 @@ chains<-list()
 ```
 
 
+# Poisson Interactions
+
 ```{r}
 #Source model
-source("model/intercept_interactions.R")
+source("model/poisson_interactions.R")
 
 #print model
-writeLines(readLines("model/intercept_interactions.R"))
+writeLines(readLines("model/poisson_interactions.R"))
 
 #Run Model
 runModel<-function(Yobs_dat){
@@ -156,7 +158,7 @@ runModel<-function(Yobs_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/intercept_interactions.jags",n.thin=1,n.iter=1000,n.burnin=990,n.chains=2,DIC=F)
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions.jags",n.thin=1,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -197,14 +199,14 @@ chains$intercept<-getChains(models$intercept)
 chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
 
 #alpha
-chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=exp(value),fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
 
 ```
 
 ### P(Interaction)
 
 ```{r,fig.height=8,fig.width=8}
-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_gradient2(low="white",mid="blue",high="Red",midpoint=0.5,limits=c(0,1))
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(exp(value))) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_continuous(low="blue",high="Red")
 ```
 
 # Niche Overlap
@@ -212,7 +214,7 @@ chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Pla
 Euclidean Distance in the P(Interaction)
 
 ```{r}
-alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% acast(Hummingbird~Plant)
+alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(exp(value))) %>% acast(Hummingbird~Plant)
 write.csv(alpha_matrix,"PInteraction.csv")
 ```
 
@@ -293,7 +295,7 @@ return(chains)}
 
 ## Alpha
 
-The probability of interactions among hummingbirds and plants
+The daily intensity of interactions among hummingbirds and plants
 
 Grab 1 species to visualize
 
@@ -304,7 +306,7 @@ chains$intercept<-getChains(models$intercept)
 chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
 
 #alpha
-chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=inv.logit(value),fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=exp(value),fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
 ```
 
 ```{r,fig.height=8,fig.width=8}
