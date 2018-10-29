@@ -178,7 +178,6 @@ ggplot(transects_zero) + geom_tile(aes(x=Index,y=Plant,fill=as.factor(n>0))) + l
 ggplot(transects_zero) + geom_tile(aes(x=as.factor(Month),y=Plant,fill=as.factor(n>0))) + labs(fill="Flowering")  + theme_bw() + facet_wrap(Year~Site) + scale_fill_manual(values=c("grey80","black")) + labs(x="Month")
 ```
 
-
 ## Species by transect matrix
 
 # Count model of species phenology
@@ -193,8 +192,8 @@ indat$jPlant<-as.numeric(indat$Plant)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
 
-#smmoth data
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n))
+#smooth data
+indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
 
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
@@ -208,37 +207,46 @@ to_predict$Index<-as.factor(1:nrow(to_predict))
 
 ```{r}
 #Source model
-source("model/threshold_baseline.R")
+source("model/threshold_baseline_elev.R")
 
 #print model
-writeLines(readLines("model/threshold_baseline.R"))
+writeLines(readLines("model/threshold_baseline_elev.R"))
 
 #Run Model
 runModel<-function(Yobs_dat,Ynew_dat){
+
+  #Inits
+  InitStage<-function(){
+    z=rep(1,length(Yobs_dat$n))
+    z_new=rep(1,length(Ynew_dat$n))
+    list(z=z,z_new=z_new)
+  }
   
   #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","fitpred","Ynew")
-  
+  ParsStage <- c("alpha","alpha_flowering","beta","fit","fitnew","discrepancy","pred_error","fitpred","Ynew")
+   
   #Jags Data
 
-
-  Dat<-list(
+    Dat<-list(
     Nobs=length(Yobs_dat$n),
     Y=Yobs_dat$n,
     Plants=max(Yobs_dat$jPlant),
     Plant=Yobs_dat$jPlant,
-
+    ele=Yobs_dat$ele,
+  
     #Prediction data
     Npreds=length(Ynew_dat$n),
     Ypred=Ynew_dat$n,
-    PredPlant=Ynew_dat$jPlant)
-
+    Plant_new=Ynew_dat$jPlant,
+    ele_new=Ynew_dat$ele)
+    
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,inits=InitStage,model.file="model/threshold_baseline_elev.jags",n.thin=2,n.iter=50000,n.burnin=49500,n.chains=2,DIC=F)
     )
     return(model)
 }
+
 
 models$baseline<-runModel(Yobs_dat=indat,Ynew_dat=to_predict)
 ```
@@ -257,8 +265,8 @@ getChains<-function(mod,indat,to_predict){
   splitpc<-split(pc,pc$parameter)
   
   #single index
-  splitpc[c("alpha")]<-lapply(
-    splitpc[c("alpha")],function(x){
+  splitpc[c("alpha","beta","alpha_flowering")]<-lapply(
+    splitpc[c("alpha","beta","alpha_flowering")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,jPlant=as.numeric(as.character(sv)))  %>% left_join(jagsIndexPlants)
     })
@@ -317,6 +325,9 @@ jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(ind
 to_predict<-indat %>% filter(Year %in% "2017")
 indat<-indat %>% filter(!Year %in% "2017")
 
+#smooth data
+indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
+
 #Add index
 indat$Index<-as.factor(1:nrow(indat))
 to_predict$Index<-as.factor(1:nrow(to_predict))
@@ -332,8 +343,15 @@ source(paste("model/",mod_name,".R",sep=""))
 #print model
 writeLines(readLines(paste("model/",mod_name,".R",sep="")))
 
+  #Inits
+  InitStage<-function(){
+    z=rep(1,length(Yobs_dat$n))
+    z_new=rep(1,length(Ynew_dat$n))
+    list(z=z,z_new=z_new)
+  }
+  
   #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
+  ParsStage <- c("alpha","beta","fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
    
   #Jags Data
 
@@ -346,6 +364,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     Month=Yobs_dat$Month,
     Sites=max(Yobs_dat$Site),
     Site=Yobs_dat$Site,
+    ele=Yobs_dat$ele,
     
     #Autocorrelation data
     zeros=rep(0,max(Yobs_dat$jPlant)),
@@ -355,19 +374,20 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     #Prediction data
     Npreds=length(Ynew_dat$n),
     Ypred=Ynew_dat$n,
-    NewPlant=Ynew_dat$jPlant,
-    NewSite=Ynew_dat$Site,
-    NewMonth=Ynew_dat$Month)
+    Plant_new=Ynew_dat$jPlant,
+    Site_new=Ynew_dat$Site,
+    Month_new=Ynew_dat$Month,
+    ele_new=Ynew_dat$ele)
     
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,inits=InitStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=50000,n.burnin=49500,n.chains=2,DIC=F)
     )
     return(model)
 }
 
-models$phylogenetic_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_attraction")
+models$phylogenetic_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_attraction_elev")
 ```
 
 #Get Chains
@@ -384,8 +404,8 @@ getChains<-function(mod,indat,to_predict){
   splitpc<-split(pc,pc$parameter)
   
   #single index
-  splitpc[c("alpha")]<-lapply(
-    splitpc[c("alpha")],function(x){
+  splitpc[c("alpha","beta")]<-lapply(
+    splitpc[c("alpha","beta")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,jPlant=as.numeric(as.character(sv)))  %>% left_join(jagsIndexPlants)
     })
@@ -476,7 +496,7 @@ ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-models$phylogenetic_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_repulsion")
+models$phylogenetic_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_repulsion_elev")
 ```
 
 #Get Chains
@@ -545,14 +565,15 @@ Dtraits<-Dtraits/max(Dtraits)
 #filter data to match traits
 indat<-transects_zero %>% filter(Plant %in% rownames(traits)) 
 
+
 #Easiest to work with jags as numeric ordinal values
 indat$Plant<-as.factor(indat$Plant)
 indat$jPlant<-as.numeric(indat$Plant)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
 
-#smmoth data
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n))
+#smooth data
+indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
 
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
@@ -564,7 +585,7 @@ to_predict$Index<-as.factor(1:nrow(to_predict))
 ```
 
 ```{r}
-models$trait_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_attraction")
+models$trait_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_attraction_elev")
 ```
 
 #Get Chains
@@ -612,7 +633,7 @@ ggplot(trait_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin
 ## Repulsion
 
 ```{r}
-models$trait_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_repulsion")
+models$trait_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_repulsion_elev")
 ```
 
 #Get Chains
@@ -674,7 +695,7 @@ indat$jPlant<-as.numeric(indat$Plant)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
 
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n))
+indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
 
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
@@ -686,7 +707,7 @@ to_predict$Index<-as.factor(1:nrow(to_predict))
 ```
 
 ```{r}
-models$interaction_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_repulsion")
+models$interaction_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_repulsion_elev")
 ```
 
 ```{r}
@@ -737,7 +758,7 @@ ggplot(int_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-models$interaction_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_repulsion")
+models$interaction_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_repulsion_elev")
 ```
 
 #Get Chains
@@ -804,19 +825,20 @@ allchains[allchains$Effect==TRUE,"Effect"]<-"Repulsion"
 allchains[allchains$Model=="julian","Effect"]<-NA
 ```
 
-## Alpha
+## Predicted elevation ranges
 
 The probability of occurrence.
 
 ```{r,fig.height=12,fig.width=10}
 #Alphas
 
+sim_elev<-function(alpha,beta,ele){
+  p<-inv.logit(alpha + beta * ele)
+  return(data.frame(alpha,beta,ele,p))
+}
+
 #The baseline model is not logit transformed intercept
-alphas<-allchains %>% filter(parameter %in% "alpha")
-
-alphas[!alphas$Model %in% "baseline","value"]<-inv.logit(alphas[!alphas$Model %in% "baseline","value"])
-
-alphas %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + facet_wrap(~Plant,scales="free")
+allchains %>% filter(parameter %in% c("alpha","beta")) %>% group_by(Model,Draw,chain,Plant) %>% select(-par) %>% spread(parameter,value) %>% do(sim_elev(.$alpha,.$beta,unique(indat$ele))) %>% group_by(Model,Plant,ele) %>%  summarize(mean=mean(p),lower=quantile(p,0.05),upper=quantile(p,0.95)) %>% ggplot(.,aes(fill=Model,x=ele,y=mean)) + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + facet_wrap(~Plant,scales="free")
 ```
 
 ## E: The effect of autocorrelation on mean flowering intensity
