@@ -5,12 +5,13 @@ library(reshape2)
 ##Attraction
 lambda=2
 omega=1
-gamma=0.01
+gamma=1
 
 #distance
 d<-as.matrix(cophenetic(phy))
 d<-d/max(d)
 
+#d<-Dint
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
 vCov=(omega*C[,] + (1-omega) * I)*gamma
@@ -21,7 +22,7 @@ ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()
 
 ##Calculate correlation
-sim_vals<-function(lambda=5,omega=1,gamma=1){
+sim_vals<-function(lambda=1,omega=1,gamma=1){
   C<-exp(-lambda*d)
   vCov=(omega*C[,] + (1-omega) * I)*gamma
   
@@ -34,7 +35,7 @@ sim_vals<-function(lambda=5,omega=1,gamma=1){
 }
 results<-list()
 
-gammas<-seq(1,20,5)
+gammas<-seq(1,5,0.5)
 
 for(y in 1:length(gammas) ){
   results[[y]]<-sim_vals(gamma=gammas[[y]])
@@ -45,7 +46,7 @@ results<-bind_rows(results)
 ggplot(results) + geom_density(aes(x=value,fill=as.factor(gamma))) + facet_wrap(~variable) 
 
 ##Calculate correlation
-sim_cor<-function(lambda=5,omega=1,gamma=1){
+sim_cor<-function(lambda=1,omega=1,gamma=1){
   C<-exp(-lambda*d)
   vCov=(omega*C[,] + (1-omega) * I)*gamma
   
@@ -77,9 +78,9 @@ ggplot(results,aes(x=distance,y=cor,col=gamma)) + geom_point() + geom_line(aes(g
 ##Repulsion
 
 #distance
-lambda=5
+lambda=0.01
 omega=1
-gamma=0.1
+gamma=1
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
@@ -92,7 +93,7 @@ ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()
 
 ##Calculate correlation
-sim_cor<-function(lambda,omega=0.9,gamma=1){
+sim_cor<-function(lambda,omega=1,gamma=1){
   means<-rep(0,nrow(d))
   C<-exp(-lambda*d)
   vCov=(omega*C[,] + (1-omega) * I)*gamma
@@ -111,7 +112,7 @@ sim_cor<-function(lambda,omega=0.9,gamma=1){
 
 results<-list()
 
-lambdas<-seq(0,5,0.5)
+lambdas<-seq(0.01,5,0.5)
 
 for(y in 1:length(lambdas) ){
   results[[y]]<-sim_cor(lambda=lambdas[[y]])
