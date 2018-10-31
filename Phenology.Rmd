@@ -225,7 +225,7 @@ writeLines(readLines("model/threshold_baseline.R"))
 runModel<-function(Yobs_dat,Ynew_dat){
   
   #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","fitpred","Ynew")
+  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","fitpred","Ynew","p")
    
   #Jags Data
 
@@ -242,7 +242,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=1,n.iter=2000,n.burnin=1800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -271,8 +271,8 @@ getChains<-function(mod,indat,to_predict){
     })
   
     #double index - observed
-  splitpc[c("Ynew","discrepancy")]<-lapply(
-    splitpc[c("Ynew","discrepancy")],function(x){
+  splitpc[c("Ynew","discrepancy","p")]<-lapply(
+    splitpc[c("Ynew","discrepancy","p")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
@@ -324,7 +324,7 @@ source(paste("model/",mod_name,".R",sep=""))
 writeLines(readLines(paste("model/",mod_name,".R",sep="")))
 
   #Parameters to track
-  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
+  ParsStage <- c("p","alpha","fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
    
   #Jags Data
     Dat<-list(
@@ -351,7 +351,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=1,n.iter=2000,n.burnin=1500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=1,n.iter=2000,n.burnin=1800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -373,8 +373,8 @@ getChains<-function(mod,indat,to_predict){
   splitpc<-split(pc,pc$parameter)
   
       #double index - observed
-  splitpc[c("Ynew","discrepancy")]<-lapply(
-    splitpc[c("Ynew","discrepancy")],function(x){
+  splitpc[c("Ynew","discrepancy","p")]<-lapply(
+    splitpc[c("Ynew","discrepancy","p")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
@@ -672,8 +672,8 @@ allchains[allchains$Model=="julian","Effect"]<-NA
 
 ### E: The effect of autocorrelation
 
-```{r,fig.height=30,fig.width=12}
-allchains %>% filter(parameter %in% "e",Plant=="Besleria solanoides") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip()
+```{r,fig.height=40,fig.width=12}
+allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip()
 ```
 
 # One example
@@ -890,6 +890,22 @@ ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs
 
 ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)") + facet_wrap(~Month,scales = "free")
 ```
+
+# Flowering correlations in predictions
+
+```{r,eval=T}
+
+cormat<-function(dat){
+  dat %>% select(-Model) %>% as.matrix(.) %>% cor(.) %>% reshape2::melt(.)
+}
+
+allchains %>% filter(parameter %in% "p") %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% ggplot(.,aes(x=Var1,y=Var2)) + geom_tile(aes(fill=value)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(x="",y="",fill="r") + theme(axis.text.x=element_text(angle=-90))
+```
+
+```{r,fig.height=30}
+allchains %>% filter(parameter %in% "p",jPlant %in% c(1,2,3)) %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% filter(!Var1==Var2) %>% ggplot(.,aes(x=Model,y=value)) + geom_point() + facet_wrap(Var1~Var2,ncol=6,scales = "free_x") + coord_flip()
+```
+
 
 ```{r}
 save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
