@@ -7,7 +7,7 @@ source("functions.R")
 ##Attraction
 lambda=5
 omega=1
-gamma=1000
+gamma=1
 
 #distance
 d<-as.matrix(cophenetic(phy))
@@ -19,13 +19,12 @@ C<-exp(-lambda*d)
 vCov=(omega*C[,] + (1-omega) * I)*gamma
 r<-data.frame(rmvnorm(1e4,mean=means,vCov))
 colnames(r)<-phy$tip.label
-ggplot(r,aes(x=`Drymonia teuscheri`,y=`Drymonia collegarum`)) + geom_point() + coord_equal()
-ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()+ coord_equal()
+ggplot(r,aes(x=inv.logit(`Drymonia teuscheri`),y=inv.logit(`Drymonia collegarum`))) + geom_point() + coord_equal()
+ggplot(r,aes(x=inv.logit(`Gasteranthus lateralis`),y=inv.logit(`Columnea ciliata`))) + geom_point()+ coord_equal()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()+ coord_equal()
 
 a_effect<-effect(lambda=lambda,D=D,omega=omega,gamma=gamma) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 ggplot(a_effect,aes(x=Distance,y=mean)) + geom_point() + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
-
 
 ##Calculate correlation
 sim_vals<-function(lambda=1,omega=1,gamma=1){
@@ -86,7 +85,7 @@ ggplot(results,aes(x=distance,y=cor,col=gamma)) + geom_point() + geom_line(aes(g
 #distance
 lambda=1
 omega=1
-gamma=0.1
+gamma=3
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
@@ -94,7 +93,7 @@ vCov=(omega*C[,] + (1-omega) * I)*gamma
 r<-data.frame(rmvnorm(1e4,mean=means,solve(vCov)))
 
 colnames(r)<-phy$tip.label
-ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Gasteranthus quitensis`)) + geom_point() + coord_equal()
+ggplot(r,aes(x=inv.logit(`Gasteranthus lateralis`),y=inv.logit(`Gasteranthus quitensis`))) + geom_point() + coord_equal()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Columnea ciliata`)) + geom_point()+ coord_equal()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()+ coord_equal()
 
@@ -120,15 +119,15 @@ sim_cor<-function(lambda,omega=1,gamma=1){
   return(dat)
 }
 
-results<-list()
-
-lambdas<-seq(0.01,5,0.5)
-
-for(y in 1:length(lambdas) ){
-  results[[y]]<-sim_cor(lambda=lambdas[[y]])
-}
-
-results<-bind_rows(results)
-
-results %>% filter(!distance==0) %>% ggplot(.,aes(x=distance,y=cor,col=lambda)) + geom_point() + geom_line(aes(group=lambda)) 
-
+for(x in c(0.1,0.5,1:10)){
+  print(x)
+  gamma=x
+  means<-rep(0,nrow(d))
+  C<-exp(-lambda*d)
+  vCov=(omega*C[,] + (1-omega) * I)*gamma
+  r<-data.frame(rmvnorm(1e4,mean=means,solve(vCov)))
+  
+  colnames(r)<-phy$tip.label
+  p<-ggplot(r,aes(x=inv.logit(`Gasteranthus lateralis`),y=inv.logit(`Gasteranthus quitensis`))) + geom_point() + coord_equal()  + ggtitle(gamma) + ylim(0,1) + xlim(0,1)
+print(p)
+  }

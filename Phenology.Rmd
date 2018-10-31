@@ -242,7 +242,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=1,n.iter=2000,n.burnin=1800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -351,7 +351,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=1,n.iter=2000,n.burnin=1800,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -673,9 +673,14 @@ allchains[allchains$Model=="julian","Effect"]<-NA
 ### E: The effect of autocorrelation
 
 ```{r,fig.height=40,fig.width=12}
-allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip()
+allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6,scales="free_x") + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() + geom_hline(yintercept=0,linetype="dashed")
 ```
 
+# P(Flowering)
+
+```{r,fig.height=40,fig.width=12}
+allchains %>% filter(parameter %in% "p") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() 
+```
 # One example
 
 Glossoloma purpureum
@@ -755,8 +760,10 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 
 ## Alpha: Species specific flowering rate
 
-```{r}
-allchains %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(fill=Model,x=value)) + geom_density(alpha=0.4) +  facet_wrap(~Plant,scales="free")
+```{r,fig.width=11,fig.height=6}
+allchains %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(fill=Model,x=value)) + geom_density(alpha=0.4) +  facet_wrap(~Plant,scales="free",ncol=3)
+
+allchains %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(fill=Model,x=inv.logit(value))) + geom_density(alpha=0.6) +  facet_wrap(~Plant,scales="free")
 ```
 
 ## Omega: The magnitude of the effect of autocorrelation on mean flowering occurrence
@@ -902,8 +909,8 @@ cormat<-function(dat){
 allchains %>% filter(parameter %in% "p") %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% ggplot(.,aes(x=Var1,y=Var2)) + geom_tile(aes(fill=value)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(x="",y="",fill="r") + theme(axis.text.x=element_text(angle=-90))
 ```
 
-```{r,fig.height=30}
-allchains %>% filter(parameter %in% "p",jPlant %in% c(1,2,3)) %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% filter(!Var1==Var2) %>% ggplot(.,aes(x=Model,y=value)) + geom_point() + facet_wrap(Var1~Var2,ncol=6,scales = "free_x") + coord_flip()
+```{r,fig.height=50}
+allchains %>% filter(parameter %in% "e") %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% filter(!Var1==Var2) %>% ggplot(.,aes(x=Model,y=value)) + geom_point() + facet_wrap(Var1~Var2,ncol=4,scales = "free_x") + coord_flip()
 ```
 
 
