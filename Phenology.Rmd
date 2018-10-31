@@ -36,6 +36,9 @@ library(dplyr)
 models<-list()
 chains<-list()
 discrepancy<-list()
+
+#source functions
+source("functions.R")
 ```
 
 # Transects
@@ -52,13 +55,18 @@ transects<-transects %>% filter(!is.na(ele))
 
 ```{r}
 intdata<-as.matrix(read.csv("PInteraction.csv",row.names = 1))
-Dint<-as.matrix(dist(t(intdata)))
+
+Dint<-as.matrix(dist(t(intdata),method = "euclidean"))
 
 rownames(Dint)<-str_replace(rownames(Dint),"\\."," ")
 colnames(Dint)<-str_replace(colnames(Dint),"\\."," ")
 
-ggbiplot(prcomp(intdata))
+ggbiplot(prcomp(intdata),scale = 1) 
+
 Dint<-Dint/max(Dint)
+
+ggplot(reshape2::melt(Dint),aes(x=Var1,y=Var2,fill=value)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle = -90)) + labs(fill="Pollinator Overlap") 
+
 ```
 
 # Phylogeny
@@ -98,9 +106,13 @@ traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length
 
 #match with phylogeny
 traits<-traits %>% filter(Plant %in% phy$tip.label)
+```
 
-#order the factors
-head(transects) %>% kable() %>% kable_styling()
+```{r}
+#Distance matrix
+rownames(traits)<-traits[,1]
+Dtraits<-as.matrix(dist(traits[,-1]))
+Dtraits<-Dtraits/max(Dtraits)
 ```
 
 ### Total Flowers
@@ -132,10 +144,9 @@ transects %>% group_by(Plant,julian) %>% summarise(n=sum(Flowers)) %>% filter(!i
 ggplot(.,aes(x=julian,y=n)) + geom_point(size=2) + labs(col="Year") + theme_bw() + facet_wrap(~Plant,scales = "free_y")
 ```
 
-## Infer absences
 
 ```{r,fig.height=15}
-
+## Infer absences
 transects$Year<-as.character(format(as.POSIXlt(transects$Date),"%Y"))
 transects$Month<-as.numeric(format(as.POSIXlt(transects$Date),"%m"))
 transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
@@ -145,10 +156,6 @@ transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
 #limit to peak flowering, more than 5% of plants for the year are in bloom.
 sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n >sum(n)*0.05) %>% mutate(n=(n>0)*1)
 
-all_plants<-function(dat){
-  data.frame(dat,Plant=unique(sumf$Plant),n=0)
-}
-
 #Which combinations are sampled.
 sampled<-sumf %>% ungroup() %>% distinct(Site,Month,Year) %>% arrange(Site,Month,Year) %>% group_by(Site,Month,Year) %>% do(all_plants(.))
 
@@ -156,9 +163,7 @@ sampled<-sumf %>% ungroup() %>% distinct(Site,Month,Year) %>% arrange(Site,Month
 mean_ele<-transects %>% group_by(Site,Month,Year) %>% summarize(ele=mean(ele))
 zero_count<-sampled %>% anti_join(sumf,by=c("Plant","Site","Month","Year")) %>% inner_join(mean_ele)
 
-
 transects_zero<-bind_rows(sumf,zero_count)
-
 ```
 
 ## Species elevation ranges
@@ -166,7 +171,6 @@ transects_zero<-bind_rows(sumf,zero_count)
 ```{r}
 ggplot(transects_zero %>% filter(!n==0),aes(x=Plant,y=ele)) + geom_boxplot() + coord_flip() + labs(y="Elevation (m)") + theme_bw()
 ggsave("Figures/ElevationRanges.png",height=5,width=7,dpi=300)
-
 ```
 
 ## Flowering Data Matrix
@@ -182,7 +186,7 @@ ggplot(transects_zero) + geom_tile(aes(x=as.factor(Month),y=Plant,fill=as.factor
 ggsave("Figures/DataMatrix_Index.png",height=4,width=8)
 ```
 
-```{r,fig.height=15}
+```{r,fig.width=10}
 #prepare data
 indat<-transects_zero 
 
@@ -205,7 +209,6 @@ indat<-indat %>% filter(!Year %in% "2017")
 indat$Index<-as.factor(1:nrow(indat))
 to_predict$Index<-as.factor(1:nrow(to_predict))
 ```
-
 
 # Baseline model
 
@@ -243,7 +246,6 @@ runModel<-function(Yobs_dat,Ynew_dat){
     )
     return(model)
 }
-
 
 models$baseline<-runModel(Yobs_dat=indat,Ynew_dat=to_predict)
 ```
@@ -311,25 +313,6 @@ chains$baseline %>% filter(parameter %in% c("alpha","fit","fitnew","fitpred")) %
 
 ## Attraction
 
-```{r,fig.height=15}
-#prepare data
-indat<-transects_zero %>% filter(Plant %in% phy$tip.label)
-indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
-indat$jPlant<-as.numeric(indat$Plant)
-jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
-
-#hold 2017 data aside for prediction
-to_predict<-indat %>% filter(Year %in% "2017")
-indat<-indat %>% filter(!Year %in% "2017")
-
-#smooth data
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
-
-#Add index
-indat$Index<-as.factor(1:nrow(indat))
-to_predict$Index<-as.factor(1:nrow(to_predict))
-```
-
 ```{r}
 #Run Model
 runModel_autocorrelation<-function(Yobs_dat,Ynew_dat,D=D,mod_name){
@@ -341,10 +324,9 @@ source(paste("model/",mod_name,".R",sep=""))
 writeLines(readLines(paste("model/",mod_name,".R",sep="")))
 
   #Parameters to track
-  ParsStage <- c("fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
+  ParsStage <- c("alpha","fit","fitnew","discrepancy","pred_error","lambda_cov","e","omega","fitpred","Ynew","gamma")
    
   #Jags Data
-
     Dat<-list(
     Nobs=length(Yobs_dat$n),
     Y=Yobs_dat$n,
@@ -367,10 +349,9 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewSite=Ynew_dat$Site,
     NewMonth=Ynew_dat$Month)
     
-    
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=1,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=1,n.iter=2000,n.burnin=1500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -397,6 +378,13 @@ getChains<-function(mod,indat,to_predict){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
+    })
+  
+    #single index
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
+    pc<-data.frame(x,jPlant=as.numeric(as.character(sv)))  %>% left_join(jagsIndexPlants)
     })
   
   #Prediction
@@ -429,7 +417,9 @@ chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction,indat,t
 
 ### Evaluate convergence
 
-```{r,fig.height=12,fig.width=15}
+```{r,fig.height=15,fig.width=15}
+chains$phylogenetic_attraction %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~Plant,scales="free")
+
 chains$phylogenetic_attraction %>% filter(parameter %in% c("e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(Month~Plant,scales="free")
 ```
 
@@ -442,37 +432,18 @@ chains$phylogenetic_attraction %>% filter(parameter %in% c("fit","fitnew","lambd
 chains$phylogenetic_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-Mean phylogenetic covariance
+## Effect of phylogenetic attraction
 
 ```{r}
-tauC_attraction<-function(omega,gamma,I,D,lambda_cov){
-      C = exp(-lambda_cov * D)
-      vCov=omega*C + (1-omega) * I
-      result<-vCov*gamma
-      diag(result)<-NA
-      result<-reshape2::melt(result)
-      return(result)
-}
-
-result<-chains$phylogenetic_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=D,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$phylogenetic_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain)  %>% do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=D,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
 ```
 
-## Decay in phylogenetic attraction
-
 ```{r}
-effect<-function(lambda,D,omega,gamma){
-  C<-exp(-lambda*D)
-  vCov=(omega*C[,] + (1-omega) * I)
-  vCov=vCov*gamma
-  data.frame(lambda,Distance=as.numeric(D),Covariance=as.numeric(vCov))
-}
-
 phy_effect<-chains$phylogenetic_attraction %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect(lambda=.$lambda_cov,D=D,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
 ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
-
 ```
 
 ## Repulsion
@@ -502,35 +473,15 @@ chains$phylogenetic_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov",
 chains$phylogenetic_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-Mean phylogenetic covariance martix
+## Effect of phylogenetic repulsion
 
 ```{r}
-tauC_repulsion<-function(omega,gamma,I,D,lambda_cov){
-      C = exp(-lambda_cov * D)
-      vCov=omega*C + (1-omega) * I
-      result<-solve(vCov*gamma)
-      diag(result)<-NA
-      result<-reshape2::melt(result)
-      return(result)
-}
-
-result<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=D,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>%  do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=D,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
-
 ```
 
-## Decay in phylogenetic repulsion
-
 ```{r}
-
-effect_repulsion<-function(lambda,D,omega,gamma){
-  C<-exp(-lambda*D)
-  vCov=(omega*C[,] + (1-omega) * I)
-  vCov=solve(vCov*gamma)
-  data.frame(lambda,Distance=as.numeric(D),Covariance=as.numeric(vCov))
-}
-
 phyrepulse_effect<-chains$phylogenetic_repulsion %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect_repulsion(lambda=.$lambda_cov,D=D,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
 ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
@@ -539,33 +490,6 @@ ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes
 # Traits
 
 ## Trait Attraction
-
-```{r}
-#Distance matrix
-rownames(traits)<-traits[,1]
-Dtraits<-as.matrix(dist(traits[,-1]))
-Dtraits<-Dtraits/max(Dtraits)
-
-#filter data to match traits
-indat<-transects_zero %>% filter(Plant %in% rownames(traits)) 
-
-#Easiest to work with jags as numeric ordinal values
-indat$Plant<-as.factor(indat$Plant)
-indat$jPlant<-as.numeric(indat$Plant)
-
-jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
-
-#smooth data
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
-
-#hold 2017 data aside for prediction
-to_predict<-indat %>% filter(Year %in% "2017")
-indat<-indat %>% filter(!Year %in% "2017")
-
-#Add index
-indat$Index<-as.factor(1:nrow(indat))
-to_predict$Index<-as.factor(1:nrow(to_predict))
-```
 
 ```{r}
 models$trait_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_attraction")
@@ -592,13 +516,13 @@ chains$trait_attraction %>% filter(par %in% c("fit","fitnew","lambda_cov","fitpr
 chains$trait_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","prediction","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
+## Effect of trait attraction
+
 ```{r}
-result<-chains$trait_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=Dtraits,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$trait_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>%  do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=Dtraits,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>%filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
 ```
-
-## Decay in trait attraction
 
 ```{r}
 trait_effect<-chains$trait_attraction %>%  filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect(lambda=.$lambda_cov,D=Dtraits,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
@@ -632,14 +556,13 @@ chains$trait_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov","omega"
 chains$trait_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
+## Effect of trait repulsion
+
 ```{r}
-result<-chains$trait_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=Dtraits,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$trait_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>%  do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=Dtraits,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
 ```
-
-## Decay in trait repulsion
-
 ```{r}
 traitrepulse_effect<-chains$trait_repulsion %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect_repulsion(lambda=.$lambda_cov,D=Dtraits,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
@@ -649,28 +572,6 @@ ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(a
 # Interaction
 
 ## Attraction
-
-```{r,fig.height=15}
-#prepare data
-indat<-transects_zero %>% filter(Plant %in% rownames(Dint))  
-
-#Easiest to work with jags as numeric ordinal values
-indat$Plant<-as.factor(indat$Plant)
-indat$jPlant<-as.numeric(indat$Plant)
-
-
-jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
-
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
-
-#hold 2017 data aside for prediction
-to_predict<-indat %>% filter(Year %in% "2017")
-indat<-indat %>% filter(!Year %in% "2017")
-
-#Add index
-indat$Index<-as.factor(1:nrow(indat))
-to_predict$Index<-as.factor(1:nrow(to_predict))
-```
 
 ```{r}
 models$interaction_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_attraction")
@@ -695,22 +596,19 @@ chains$interaction_attraction %>% filter(parameter %in% c("fit","fitnew","lambda
 chains$interaction_attraction %>% filter(!parameter %in% c("discrepancy","Ynew","prediction","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-Mean interaction covariance
+## Effect of interaction attraction
 
 ```{r}
-result<-chains$interaction_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=Dint,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$interaction_attraction %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>%  do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=Dint,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
 ```
-
-## Decay in interaction attraction
 
 ```{r}
 
 int_effect<-chains$interaction_attraction %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect(lambda=.$lambda_cov,D=Dint,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 
 ggplot(int_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
-
 ```
 
 ## Repulsion
@@ -740,15 +638,13 @@ chains$interaction_repulsion %>% filter(par %in% c("fit","fitnew","lambda_cov","
 chains$interaction_repulsion %>% filter(!parameter %in% c("discrepancy","Ynew","prediction","pred_error")) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~parameter,ncol=2,scales="free")
 ```
 
-Mean interaction covariance martix
+## Effect of interaction repulsion
 
 ```{r}
-result<-chains$interaction_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=Dint,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+result<-chains$interaction_repulsion %>% filter(parameter %in% c("omega","gamma","lambda_cov")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>%  do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=Dint,lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
 
 ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Covariance") + theme(axis.text.x = element_text(angle=-90))
 ```
-
-## Decay in interaction repulsion
 
 ```{r}
 intrepulse_effect<-chains$interaction_repulsion %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(effect_repulsion(lambda=.$lambda_cov,D=Dint,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
@@ -774,20 +670,13 @@ allchains[allchains$Effect==TRUE,"Effect"]<-"Repulsion"
 allchains[allchains$Model=="julian","Effect"]<-NA
 ```
 
-## E: The effect of autocorrelation on mean flowering occurrence
-
-```{r,fig.height=12,fig.width=10}
-
-allpars<-allchains %>% filter(!parameter %in% c("discrepancy")) %>% group_by(Model,Plant,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
-```
-
 ### E: The effect of autocorrelation
 
-```{r}
-allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Month) %>% mutate(value=inv.logit(value)) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(~Plant) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip()
+```{r,fig.height=30,fig.width=12}
+allchains %>% filter(parameter %in% "e",Plant=="Besleria solanoides") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip()
 ```
 
-Dig into one example.
+# One example
 
 Glossoloma purpureum
 
@@ -797,7 +686,6 @@ indat %>% filter(Plant=="Glossoloma purpureum") %>% ggplot(.) + geom_jitter(aes(
 allchains %>% filter(parameter %in% "Ynew",Plant=="Glossoloma purpureum") %>% ggplot(.,aes(fill=as.factor(Month))) + geom_density(aes(x=value)) + theme_bw() + labs(x="Ynew")
 
 allchains %>% filter(parameter %in% "e",jPlant==13) %>% ggplot() + geom_density(aes(x=inv.logit(value),fill=Model),alpha=0.5) + theme_bw() + labs(x="e") + facet_wrap(~Month)
-
 ```
 
 # By site
@@ -832,7 +720,6 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==3) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
-
 ```
 
 ## 1900-2100m
@@ -840,7 +727,6 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 ```{r}
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==4) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
 ```
-
 
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==4) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
@@ -853,10 +739,8 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==5) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
 ```
 
-
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==5) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
-
 ```
 
 ## 2300m - 2500m
@@ -865,13 +749,21 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month) %>% summarize(p=sum(value)/n()) %>% filter(Site==6) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=p)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="p(Occ)") 
 ```
 
-
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==6) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
+```
 
+## Alpha: Species specific flowering rate
+
+```{r}
+allchains %>% filter(parameter %in% "alpha") %>% ggplot(.,aes(fill=Model,x=value)) + geom_density(alpha=0.4) +  facet_wrap(~Plant,scales="free")
 ```
 
 ## Omega: The magnitude of the effect of autocorrelation on mean flowering occurrence
+
+```{r}
+allpars<-allchains %>% filter(!parameter %in% c("Ynew")) %>% group_by(Model,Plant,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+```
 
 ```{r}
 allpars %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=Model,y=mean)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + coord_flip() + labs(y="Omega")
@@ -907,9 +799,7 @@ ggplot(est_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 
 ## Bayesian pvalue
 
-
 ```{r,fig.height=10,fig.width=10}
-
 fitstat<-allchains %>% filter(parameter %in% c("fit","fitnew")) %>% select(Model,Effect,Draw,chain,parameter,value)  %>% spread(key=parameter,value=value) 
 
 ymin<-min(fitstat$fit)
@@ -924,7 +814,6 @@ fitstat %>% group_by(Model) %>% summarize(p=sum((fitnew>fit)/n()))
 
 Without baseline
 ```{r,fig.height=10,fig.width=10}
-
 fitstat<-allchains %>% filter(parameter %in% c("fit","fitnew"),!Model=="baseline") %>% select(Model,Effect,Draw,chain,parameter,value)  %>% spread(key=parameter,value=value) 
 
 ymin<-min(fitstat$fit)
@@ -937,7 +826,7 @@ ggplot(data=fitstat,aes(x=fit,y=fitnew)) + geom_point(aes(col=Model)) + theme_bw
 fitstat %>% group_by(Model) %>% summarize(p=sum((fitnew>fit)/n()))
 ```
 
-## Overall
+## Model Fit
 
 ```{r}
 allchains %>% filter(parameter %in% "fit") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
@@ -957,13 +846,13 @@ allchains %>% filter(parameter %in% "fit",!Model %in% "baseline") %>% mutate(val
 allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
-Without baseline
+### Without baseline
 
 ```{r}
 allchains %>% filter(parameter %in% "discrepancy",!Model=="baseline") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
-Zoom in 
+### Zoom in
 ```{r,fig.height=10,fig.width=12}
 allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
 ```
@@ -982,10 +871,6 @@ allchains %>% filter(parameter %in% "pred_error",!Model=="baseline") %>% group_b
 allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw() 
 ```
 
-```{r}
-allchains %>% filter(parameter %in% "pred_error") %>%  group_by(Model) %>% ggplot(.,aes(x=value,fill=Model)) + geom_density(alpha=0.5)  + labs(x="Prediction Error") + theme_bw() + facet_wrap(~Plant,scales="free")
-```
-
 ### Tables
 
 ```{r}
@@ -995,17 +880,15 @@ allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  grou
 ### Flowering Rates among models
 
 ```{r}
-
 Ynewtable<-allchains %>% filter(parameter %in% "Ynew") %>% mutate(value=value) %>%  group_by(Model,Plant,Month) %>% summarize(n=round(sum(value)/n() * 100,1))  
 
-pdat<-indat %>% group_by(Plant,Month) %>% filter(!Year==2017)%>% summarize(Observed=round(sum(n)/n() * 100,1)) %>% inner_join(Ynewtable)
+pdat<-indat %>% group_by(Plant,Month) %>% filter(!Year==2017)%>% summarize(Observed=round(sum(n)/n() * 100,1)) %>% inner_join(Ynewtable) %>% mutate(Month=month.abb[as.numeric(Month)])
 
 pdat %>% spread(Model,n)  %>% arrange(Plant,Month) %>% kable() %>% kable_styling()
 
 ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)")
 
 ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)") + facet_wrap(~Month,scales = "free")
-
 ```
 
 ```{r}
