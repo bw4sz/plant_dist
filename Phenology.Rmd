@@ -242,7 +242,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -351,7 +351,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -398,10 +398,11 @@ getChains<-function(mod,indat,to_predict){
     #triple index
   splitpc[c("e")]<-lapply(
     splitpc[c("e")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
-    colnames(sv)<-c("jPlant","Month")
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+)]"))[,3:5]
+    colnames(sv)<-c("jPlant","Site","Month")
     sv$jPlant<-as.numeric(as.character(sv$jPlant))
     sv$Month<-as.numeric(as.character(sv$Month))
+    sv$Site<-as.numeric(as.character(sv$Site))
     sv<-sv %>% inner_join(jagsIndexPlants)
 
     pc<-data.frame(x,sv)
@@ -861,21 +862,25 @@ allchains %>% filter(parameter %in% "discrepancy",!Model=="baseline") %>% group_
 
 ### Zoom in
 ```{r,fig.height=10,fig.width=12}
-allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Root Mean Squared Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
+allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Fit Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
 ```
 
 # Prediction
 
 ```{r}
-allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw()
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Prediction Error") + theme_bw()
 ```
 
 ```{r}
-allchains %>% filter(parameter %in% "pred_error",!Model=="baseline") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sqrt(sum(value)/n())) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
 ```{r}
-allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Squared Error") + theme_bw() 
+allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Prediction Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
+```
+
+```{r}
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Sum Prediction Error") + theme_bw() 
 ```
 
 ### Tables
