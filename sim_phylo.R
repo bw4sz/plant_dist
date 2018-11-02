@@ -5,7 +5,7 @@ library(reshape2)
 source("functions.R")
 
 ##Attraction
-lambda=5
+lambda=1
 omega=1
 gamma=1
 

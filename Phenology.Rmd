@@ -196,10 +196,9 @@ indat$jPlant<-as.numeric(indat$Plant)
 
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=1:length(levels(indat$Plant)))
 
-#smooth data
-indat<-indat %>% group_by(Plant,jPlant,Site,Month,Year) %>% summarize(n=max(n),ele=mean(ele))
-
 indat %>% group_by(Plant,Month) %>% summarize(p=sum(n)/n()) %>% ggplot(aes(y=p,x=as.factor(Month))) + geom_point() + geom_line(aes(group=1)) + facet_wrap(~Plant) + labs(x="Proportion of data in flower")
+
+indat %>% group_by(Plant,Month,Year) %>% summarize(p=sum(n)/n()) %>% ggplot(aes(y=p,col=Year,x=as.factor(Month))) + geom_point() + geom_line(aes(group=1)) + facet_wrap(~Plant) + labs(x="Proportion of data in flower")
 
 #hold 2017 data aside for prediction
 to_predict<-indat %>% filter(Year %in% "2017")
@@ -242,7 +241,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -351,7 +350,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -398,10 +397,9 @@ getChains<-function(mod,indat,to_predict){
     #triple index
   splitpc[c("e")]<-lapply(
     splitpc[c("e")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+)]"))[,3:5]
-    colnames(sv)<-c("jPlant","Site","Month")
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jPlant","Site")
     sv$jPlant<-as.numeric(as.character(sv$jPlant))
-    sv$Month<-as.numeric(as.character(sv$Month))
     sv$Site<-as.numeric(as.character(sv$Site))
     sv<-sv %>% inner_join(jagsIndexPlants)
 
@@ -674,24 +672,35 @@ allchains[allchains$Model=="julian","Effect"]<-NA
 ### E: The effect of autocorrelation
 
 ```{r,fig.height=40,fig.width=12}
-allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6,scales="free_x") + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() + geom_hline(yintercept=0,linetype="dashed")
+allchains %>% filter(parameter %in% "e") %>% group_by(Model,jPlant,Site) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Site))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Site~Plant,ncol=6,scales="free_x") + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() + geom_hline(yintercept=0,linetype="dashed")
 ```
 
 # P(Flowering)
 
 ```{r,fig.height=40,fig.width=12}
-allchains %>% filter(parameter %in% "p") %>% group_by(Model,jPlant,Month) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Month))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Month~Plant,ncol=6) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() 
+allchains %>% filter(parameter %in% "p") %>% group_by(Model,jPlant,Site) %>% mutate(value=value) %>%  summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(y=mean,x=Model,col=as.factor(Site))) + geom_pointrange(aes(ymin=lower,ymax=upper)) + facet_wrap(Site~Plant,ncol=6) + labs(y="Effect of Association on Flowering",x="",col="Site") + coord_flip() 
 ```
 # One example
 
 Glossoloma purpureum
 
 ```{r}
-indat %>% filter(Plant=="Glossoloma purpureum") %>% ggplot(.) + geom_jitter(aes(x=as.factor(Month),y=n),height=0.01)
+indat %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom") 
 
-allchains %>% filter(parameter %in% "Ynew",Plant=="Glossoloma purpureum") %>% ggplot(.,aes(fill=as.factor(Month))) + geom_density(aes(x=value)) + theme_bw() + labs(x="Ynew")
+to_predict %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom")  + ggtitle("Prediction")
 
-allchains %>% filter(parameter %in% "e",jPlant==13) %>% ggplot() + geom_density(aes(x=inv.logit(value),fill=Model),alpha=0.5) + theme_bw() + labs(x="e") + facet_wrap(~Month)
+allchains %>% filter(parameter %in% "Ynew",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(p=sum(value)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p,col=Model)) + geom_point() + labs(x="Site",y="Proportion of data in bloom") 
+
+allchains %>% filter(parameter %in% "p",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(mean=mean(value)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_point() + labs(x="Site",y="p") 
+
+allchains %>% filter(parameter %in% "alpha",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% mutate(value=inv.logit(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Model",y="inv.logit(alpha)") + ggtitle("Species Intercept") +  coord_flip()
+
+
+allchains %>% filter(parameter %in% "e",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% mutate(value=inv.logit(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="inv.logit(e)") + ggtitle("Effect of association on flowering") 
+
+allchains %>% filter(parameter %in% "discrepancy",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="Obs - p(Flowering)") + ggtitle("Discrepancy")
+
+
 ```
 
 # By site
@@ -898,9 +907,9 @@ pdat<-indat %>% group_by(Plant,Month) %>% filter(!Year==2017)%>% summarize(Obser
 
 pdat %>% spread(Model,n)  %>% arrange(Plant,Month) %>% kable() %>% kable_styling()
 
-ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)")
+ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)") +coord_equal()
 
-ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)") + facet_wrap(~Month,scales = "free")
+ggplot(pdat,aes(x=Observed,y=n,col=Model)) + geom_point() + geom_abline() + labs(x="Observed flowering (%)",y="Predicted Flowering (%)") + facet_wrap(~Month) + coord_equal(xlim = c(0,60),ylim=c(0,60)) 
 ```
 
 # Flowering correlations in predictions
@@ -914,10 +923,9 @@ cormat<-function(dat){
 allchains %>% filter(parameter %in% "p") %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% ggplot(.,aes(x=Var1,y=Var2)) + geom_tile(aes(fill=value)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(x="",y="",fill="r") + theme(axis.text.x=element_text(angle=-90))
 ```
 
-```{r,fig.height=50}
+```{r,fig.height=70}
 allchains %>% filter(parameter %in% "e") %>% group_by(Model,Plant,Site,Month) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Month,-Site) %>% group_by(Model) %>% do(cormat(.)) %>% filter(!Var1==Var2) %>% ggplot(.,aes(x=Model,y=value)) + geom_point() + facet_wrap(Var1~Var2,ncol=4,scales = "free_x") + coord_flip()
 ```
-
 
 ```{r}
 save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
