@@ -30,6 +30,22 @@ effect<-function(lambda,D,omega,gamma){
   data.frame(lambda,Distance=as.numeric(D),Covariance=as.numeric(vCov))
 }
 
+cor_effect<-function(lambda,D,omega,gamma){
+  C<-exp(-lambda*D)
+  vCov=(omega*C[,] + (1-omega) * I)
+  vCov=vCov*gamma
+  cormatrix<-cov2cor(vCov)
+  data.frame(lambda,Distance=as.numeric(D),Correlation=as.numeric(cormatrix))
+}
+
+cor_effect_repulsion<-function(lambda,D,omega,gamma){
+  C<-exp(-lambda*D)
+  vCov=(omega*C[,] + (1-omega) * I)
+  vCov=solve(vCov*gamma)
+  cormatrix<-cov2cor(vCov)
+  data.frame(lambda,Distance=as.numeric(D),Correlation=as.numeric(cormatrix))
+}
+
 all_plants<-function(dat){
   data.frame(dat,Plant=unique(sumf$Plant),n=0)
 }

@@ -5,25 +5,65 @@ library(reshape2)
 source("functions.R")
 
 ##Attraction
-lambda=1
+lambda=5
 omega=1
-gamma=1
+gamma=3
+
+#distance
+#d<-as.matrix(cophenetic(phy))
+#d<-d/max(d)
+
+
+random_traits<-traits
+random_traits$Plant<-sample(random_traits$Plant)
+rownames(random_traits)<-random_traits[,1]
+Dint<-as.matrix(dist(random_traits[,-1]))
+d<-Dint/max(Dint)
+
 
 #distance
 d<-as.matrix(cophenetic(phy))
 d<-d/max(d)
 
-#d<-Dint
+##Attraction
+lambda=5
+omega=1
+gamma=1
+
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
 vCov=(omega*C[,] + (1-omega) * I)*gamma
-r<-data.frame(rmvnorm(1e4,mean=means,vCov))
-colnames(r)<-phy$tip.label
+
+a_effect<-cor_effect(lambda=lambda,D=D,omega=omega,gamma=gamma) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Correlation),lower=quantile(Correlation,0.05),upper=quantile(Correlation,0.95))
+ggplot(a_effect,aes(x=Distance,y=mean)) + geom_point() + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Correlation")
+
+#repulsion
+##Attraction
+lambda=5
+omega=1
+gamma=1
+
+means<-rep(0,nrow(d))
+C<-exp(-lambda*d)
+vCov=(omega*C[,] + (1-omega) * I)*gamma
+
+a_effect<-cor_effect_repulsion(lambda=lambda,D=D,omega=omega,gamma=gamma) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Correlation),lower=quantile(Correlation,0.05),upper=quantile(Correlation,0.95))
+ggplot(a_effect,aes(x=Distance,y=mean)) + geom_point() + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Correlation")
+
+
+d["Drymonia collegarum","Drymonia teuscheri"]
+
+vCov["Drymonia collegarum","Drymonia teuscheri"]
+
+r<-data.frame(rmvnorm(1e4,mean=means,sigma=vCov))
+colnames(r)<-colnames(vCov)
+#ggplot(r,aes(x=`Drymonia teuscheri`,y=`Drymonia collegarum`)) + geom_point() + coord_equal()
 ggplot(r,aes(x=inv.logit(`Drymonia teuscheri`),y=inv.logit(`Drymonia collegarum`))) + geom_point() + coord_equal()
+
 ggplot(r,aes(x=inv.logit(`Gasteranthus lateralis`),y=inv.logit(`Columnea ciliata`))) + geom_point()+ coord_equal()
 ggplot(r,aes(x=`Gasteranthus lateralis`,y=`Drymonia teuscheri`)) + geom_point()+ coord_equal()
 
-a_effect<-effect(lambda=lambda,D=D,omega=omega,gamma=gamma) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
+a_effect<-cor_effect(lambda=lambda,D=D,omega=omega,gamma=gamma) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Covariance),lower=quantile(Covariance,0.05),upper=quantile(Covariance,0.95))
 ggplot(a_effect,aes(x=Distance,y=mean)) + geom_point() + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance")
 
 ##Calculate correlation
@@ -85,7 +125,7 @@ ggplot(results,aes(x=distance,y=cor,col=gamma)) + geom_point() + geom_line(aes(g
 #distance
 lambda=1
 omega=1
-gamma=3
+gamma=1
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)

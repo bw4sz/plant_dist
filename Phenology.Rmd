@@ -53,10 +53,10 @@ transects<-transects %>% filter(!is.na(ele))
 
 # Interactions
 
-```{r}
-intdata<-as.matrix(read.csv("PInteraction.csv",row.names = 1))
+NEEDS TO BE FIXED.
 
-Dint<-as.matrix(dist(t(intdata),method = "euclidean"))
+```{r,eval=F}
+intdata<-as.matrix(read.csv("PInteraction.csv",row.names = 1))
 
 rownames(Dint)<-str_replace(rownames(Dint),"\\."," ")
 colnames(Dint)<-str_replace(colnames(Dint),"\\."," ")
@@ -66,7 +66,6 @@ ggbiplot(prcomp(intdata),scale = 1)
 Dint<-Dint/max(Dint)
 
 ggplot(reshape2::melt(Dint),aes(x=Var1,y=Var2,fill=value)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle = -90)) + labs(fill="Pollinator Overlap") 
-
 ```
 
 # Phylogeny
@@ -113,6 +112,13 @@ traits<-traits %>% filter(Plant %in% phy$tip.label)
 rownames(traits)<-traits[,1]
 Dtraits<-as.matrix(dist(traits[,-1]))
 Dtraits<-Dtraits/max(Dtraits)
+
+#As a test lets randomize the matrix?
+random_traits<-traits
+random_traits$Plant<-sample(random_traits$Plant)
+rownames(random_traits)<-random_traits[,1]
+Dint<-as.matrix(dist(random_traits[,-1]))
+Dint<-Dint/max(Dint)
 ```
 
 ### Total Flowers
@@ -241,7 +247,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=1000,n.burnin=500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -314,7 +320,7 @@ chains$baseline %>% filter(parameter %in% c("alpha","fit","fitnew","fitpred")) %
 
 ```{r}
 #Run Model
-runModel_autocorrelation<-function(Yobs_dat,Ynew_dat,D=D,mod_name){
+runModel_autocorrelation<-function(Yobs_dat,Ynew_dat,M,mod_name){
   
 #Source model
 source(paste("model/",mod_name,".R",sep=""))
@@ -338,7 +344,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     
     #Autocorrelation data
     zeros=rep(0,max(Yobs_dat$jPlant)),
-    D=D,
+    D=M,
     I=I,
     
     #Prediction data
@@ -349,13 +355,11 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewMonth=Ynew_dat$Month)
     
   #MCMC options
-    system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=1000,n.burnin=500,n.chains=2,DIC=F)
-    )
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
     return(model)
 }
 
-models$phylogenetic_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_attraction")
+models$phylogenetic_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=D,mod_name = "threshold_attraction")
 ```
 
 #Get Chains
@@ -448,7 +452,7 @@ ggplot(phy_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-models$phylogenetic_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=D,mod_name = "threshold_repulsion")
+models$phylogenetic_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=D,mod_name = "threshold_repulsion")
 ```
 
 #Get Chains
@@ -491,7 +495,7 @@ ggplot(phyrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes
 ## Trait Attraction
 
 ```{r}
-models$trait_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_attraction")
+models$trait_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=Dtraits,mod_name = "threshold_attraction")
 ```
 
 #Get Chains
@@ -531,7 +535,7 @@ ggplot(trait_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin
 ## Repulsion
 
 ```{r}
-models$trait_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dtraits,mod_name = "threshold_repulsion")
+models$trait_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=Dtraits,mod_name = "threshold_repulsion")
 ```
 
 #Get Chains
@@ -573,7 +577,7 @@ ggplot(traitrepulse_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(a
 ## Attraction
 
 ```{r}
-models$interaction_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_attraction")
+models$interaction_attraction<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=Dint,mod_name = "threshold_attraction")
 ```
 
 ```{r}
@@ -583,7 +587,7 @@ chains$interaction_attraction<-getChains(models$interaction_attraction,indat,to_
 ### Evaluate convergence
 
 ```{r,fig.height=12,fig.width=15}
-chains$interaction_attraction %>% filter(parameter %in% c("e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(Month~jPlant,scales="free")
+ chains$interaction_attraction %>% filter(parameter %in% c("e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_grid(Month~jPlant,scales="free")
 ```
 
 ```{r}
@@ -613,7 +617,7 @@ ggplot(int_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=l
 ## Repulsion
 
 ```{r}
-models$interaction_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,D=Dint,mod_name = "threshold_repulsion")
+models$interaction_repulsion<-runModel_autocorrelation(Yobs_dat=indat,Ynew_dat=to_predict,M=Dint,mod_name = "threshold_repulsion")
 ```
 
 #Get Chains
@@ -695,11 +699,9 @@ allchains %>% filter(parameter %in% "p",Plant=="Glossoloma purpureum") %>% group
 
 allchains %>% filter(parameter %in% "alpha",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% mutate(value=inv.logit(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Model",y="inv.logit(alpha)") + ggtitle("Species Intercept") +  coord_flip()
 
-
 allchains %>% filter(parameter %in% "e",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% mutate(value=inv.logit(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="inv.logit(e)") + ggtitle("Effect of association on flowering") 
 
 allchains %>% filter(parameter %in% "discrepancy",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="Obs - p(Flowering)") + ggtitle("Discrepancy")
-
 
 ```
 
@@ -713,7 +715,6 @@ allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,jPlant,Site,Month
 
 ```{r}
  allchains %>% filter(parameter %in% "discrepancy") %>% group_by(Model,jPlant,Site,Month) %>% summarize(mean=mean(value)) %>% filter(Site==1) %>% inner_join(jagsIndexPlants) %>% ggplot(.,aes(x=as.factor(Month),y=Plant)) + geom_tile(aes(fill=mean)) + facet_wrap(~Model) + scale_fill_continuous(low="blue",high="red") + labs(fill="Discrepancy") 
-
 ```
 
 ## 1500-1700m
