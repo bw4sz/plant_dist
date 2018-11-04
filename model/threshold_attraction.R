@@ -6,7 +6,7 @@ cat("
     
     #Observation of a flowering plant
     Y[x] ~ dbern(p[x])
-    logit(p[x]) <-  e[Plant[x],Site[x]]
+    logit(p[x]) <-  alpha[Plant[x]] + e[Plant[x],Site[x]]
     
     #Residuals
     discrepancy[x] <- abs(Y[x] - p[x])
@@ -15,7 +15,6 @@ cat("
     Ynew[x] ~ dbern(p[x])
     discrepancy.new[x]<-abs(Ynew[x] - p[x])
     }
-    
     
     #Sum discrepancy
     fit<-sum(discrepancy)/Nobs
@@ -28,7 +27,7 @@ cat("
     
     #Observation - probability of flowering
     prediction[x] ~ dbern(p_new[x])
-    logit(p_new[x])<- e[NewPlant[x],NewSite[x]]
+    logit(p_new[x])<- alpha[NewPlant[x]] + e[NewPlant[x],NewSite[x]]
     
     #predictive error
     pred_error[x] <- abs(Ypred[x] - prediction[x])
@@ -68,11 +67,11 @@ cat("
     
     } 
     #Autocorrelation priors
-    gamma ~ dunif(0,20)
+    gamma = 1
     
     #Strength of covariance decay
-    lambda_cov = 10
-    omega  =1
+    lambda_cov = 3
+    omega  = 1
     }
     ",fill=TRUE)
 
