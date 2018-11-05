@@ -27,7 +27,7 @@ interactions_2013$cDate<-as.POSIXct(interactions_2013$Date)
 interactions_2017<-read.csv("data/Interactions.csv",row.names=1)
 
 #Todo check revised
-interactions_2017<-interactions_2017 %>% filter(site %in% c("Maquipucuna","SantaLuciaUpper","SantaLuciaLower")) %>% select(Date=date,Time=time,lon,lat,ele,site,waypoint,Hummingbird=hummingbird,piercing,Plant=final_plant_name)
+interactions_2017<-interactions_2017 %>% filter(site %in% c("Maquipucuna","SantaLuciaUpper","SantaLuciaLower")) %>% select(Date=date,Time=time,lon,lat,ele,site,ID=waypoint,Hummingbird=hummingbird,piercing,Plant=final_plant_name)
 
 #make posix data 
 interactions_2017$cDate<-as.POSIXct(interactions_2017$Date,format="%d/%m/%Y")

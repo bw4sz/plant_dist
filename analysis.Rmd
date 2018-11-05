@@ -27,7 +27,6 @@ library(tidyr)
 # Interactions
 
 ```{r}
-
 #Interactions
 interactions<-read.csv("data/cleaned/interactions.csv",row.names=1)
 head(interactions) %>% kable() %>% kable_styling()
@@ -80,25 +79,20 @@ ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme
 ```
 
 ```{r}
-#Convert to binary daily sampling
-dailydat<-interactions %>% group_by(ID,Date,ele,Plant,Hummingbird) %>% summarize(n=n()) %>% select(-n)
-```
-
-```{r}
 #Impute non-detections. Start by assuming all hummingbirds occur at all elevations (can be relaxed)
 
-sumf<-dailydat %>% group_by(Plant,ID,Date,ele) %>% dplyr::summarize(n=n())
+sumf<-interactions %>% group_by(Hummingbird,Plant,ID,Date,ele) %>% dplyr::summarize(Yobs=n())
 
 #Create emptys zeros
 impute_zero<-function(x,Hummingbird){
   df<-data.frame(Hummingbird=Hummingbird)
 }
 
-zero_count<-sumf %>% group_by(Plant,ID,Date,ele) %>% do(impute_zero(.,Hummingbird=levels(dailydat$Hummingbird)))
-zero_count<-zero_count %>% anti_join(dailydat)
+zero_count<-sumf %>% group_by(Plant,ID,Date,ele) %>% do(impute_zero(.,Hummingbird=levels(sumf$Hummingbird)))
+zero_count<-zero_count %>% anti_join(sumf)
 
 #add a dummy label for presence absence
-indat<-bind_rows(data.frame(dailydat),data.frame(zero_count,Yobs=0))
+indat<-bind_rows(sumf,data.frame(zero_count,Yobs=0))
 ```
 
 ```{r}
@@ -115,13 +109,9 @@ indat$jPlant<-as.numeric(indat$Plant)
 jagsIndexBird<-data.frame(Hummingbird=levels(indat$Hummingbird),jBird=factor(1:length(levels(indat$Hummingbird))))
 jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
 
-indat$Index<-1:nrow(indat)
-indat<-droplevels(indat)
-
 #Turn Time and ID into numeric indexes
 indat$jTime<-as.numeric(as.factor(indat$Date))
 indat$jID<-as.numeric(as.factor(indat$ID))
-
 ```
 
 ```{r}
@@ -130,22 +120,24 @@ models<-list()
 chains<-list()
 ```
 
-
 # Poisson Interactions
 
 ```{r}
 #Source model
-source("model/poisson_interactions.R")
+source("model/poisson_interactions_detection.R")
 
 #print model
-writeLines(readLines("model/poisson_interactions.R"))
+writeLines(readLines("model/poisson_interactions_detection.R"))
 
 #Run Model
 runModel<-function(Yobs_dat){
   
   #Parameters to track
-  ParsStage <- c("alpha")
+  ParsStage <- c("alpha","omega")
   
+  InitStage<-function(){
+    list(z=array(dim=c(Dat$Birds,Dat$Plants,Dat$Cameras),data=max(Dat$Yobs)))
+  }
   #Jags Data
 
   Dat<-list(
@@ -154,11 +146,13 @@ runModel<-function(Yobs_dat){
     Bird=Yobs_dat$jBird,
     Plant=Yobs_dat$jPlant,
     Plants=max(c(Yobs_dat$jPlant)),
+    Cameras=max(Yobs_dat$jID),
+    Camera=Yobs_dat$jID,
     Nobs=length(Yobs_dat$Yobs))
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions.jags",n.thin=1,n.iter=1000,n.burnin=900,n.chains=2,DIC=F)
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions_detection.jags",n.thin=1,inits = InitStage,n.iter=2000,n.burnin=1800,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -180,6 +174,13 @@ getChains<-function(mod){
   #Extract index
   splitpc<-split(pc,pc$parameter)
   
+    #single index
+  splitpc[c("omega")]<-lapply(
+    splitpc[c("omega")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)"))[,3]
+    pc<-data.frame(x,jBird=sv)
+    })
+  
   #double index
   splitpc[c("alpha")]<-lapply(
     splitpc[c("alpha")],function(x){
@@ -199,14 +200,16 @@ chains$intercept<-getChains(models$intercept)
 chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
 
 #alpha
-chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=exp(value),fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+
+chains$intercept %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=Hummingbird,y=value)) + geom_boxplot() + coord_flip()
 
 ```
 
 ### P(Interaction)
 
 ```{r,fig.height=8,fig.width=8}
-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(exp(value))) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_continuous(low="blue",high="Red")
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_continuous(low="blue",high="Red")
 ```
 
 # Niche Overlap
@@ -214,7 +217,7 @@ chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Pla
 Euclidean Distance in the P(Interaction)
 
 ```{r}
-alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(exp(value))) %>% acast(Hummingbird~Plant)
+alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% acast(Hummingbird~Plant)
 write.csv(alpha_matrix,"PInteraction.csv")
 ```
 

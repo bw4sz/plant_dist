@@ -6,7 +6,7 @@ cat("
     
     #Observation of a flowering plant
     Y[x] ~ dbern(p[x])
-    logit(p[x]) <-  alpha[Plant[x]] + e[Plant[x],Site[x]]
+    logit(p[x]) <-  alpha[Plant[x]] + e[Plant[x],Site[x],Month[x]]
     
     #Residuals
     discrepancy[x] <- abs(Y[x] - p[x])
@@ -28,7 +28,7 @@ cat("
     
     #Observation - probability of flowering
     prediction[x] ~ dbern(p_new[x])
-    logit(p_new[x])<- alpha[NewPlant[x]] + e[NewPlant[x],NewSite[x]]
+    logit(p_new[x])<- alpha[NewPlant[x]] + e[NewPlant[x],NewSite[x],NewMonth[x]]
     
     #predictive error
     pred_error[x] <- abs(Ypred[x] - prediction[x])
@@ -42,10 +42,11 @@ cat("
     #########################
     
     #For each of observation
+    for(x in 1:Months){
     for(y in 1:Sites){
-    e[1:Plants,y] ~ dmnorm(zeros,tauC[,])
+    e[1:Plants,y,x] ~ dmnorm(zeros,tauC[,])
     }
-
+    }
     ##covariance among similiar species
     for(i in 1:Plants){
     for(j in 1:Plants){
@@ -71,7 +72,7 @@ cat("
     gamma = 5
     
     #Strength of covariance decay
-    lambda_cov = 2
+    lambda_cov = 1
     omega = 1
     }
     ",fill=TRUE)

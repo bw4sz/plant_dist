@@ -53,10 +53,8 @@ transects<-transects %>% filter(!is.na(ele))
 
 # Interactions
 
-NEEDS TO BE FIXED.
-
-```{r,eval=F}
-intdata<-as.matrix(read.csv("PInteraction.csv",row.names = 1))
+```{r,eval=T}
+intdata<-as.matrix(read.csv("data/InteractionIntensity.csv",row.names = 1))
 
 rownames(Dint)<-str_replace(rownames(Dint),"\\."," ")
 colnames(Dint)<-str_replace(colnames(Dint),"\\."," ")
@@ -65,7 +63,7 @@ ggbiplot(prcomp(intdata),scale = 1)
 
 Dint<-Dint/max(Dint)
 
-ggplot(reshape2::melt(Dint),aes(x=Var1,y=Var2,fill=value)) + geom_tile() + scale_fill_continuous(low="blue",high="red") + theme(axis.text.x = element_text(angle = -90)) + labs(fill="Pollinator Overlap") 
+ggplot(reshape2::melt(Dint),aes(x=Var1,y=Var2,fill=value)) + geom_tile() + scale_fill_continuous(low="red",high="blue") + theme(axis.text.x = element_text(angle = -90)) + labs(fill="Visitor Distance") 
 ```
 
 # Phylogeny
@@ -106,21 +104,13 @@ traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length
 
 #match with phylogeny
 traits<-traits %>% filter(Plant %in% phy$tip.label)
-```
 
-```{r}
-#Distance matrix
 rownames(traits)<-traits[,1]
 Dtraits<-as.matrix(dist(traits[,-1]))
 Dtraits<-Dtraits/max(Dtraits)
-
-#As a test lets randomize the matrix?
-random_traits<-traits
-random_traits$Plant<-sample(random_traits$Plant)
-rownames(random_traits)<-random_traits[,1]
-Dint<-as.matrix(dist(random_traits[,-1]))
-Dint<-Dint/max(Dint)
 ```
+
+Correlation among matrices
 
 ### Total Flowers
 
@@ -222,6 +212,14 @@ indat$Index<-as.factor(1:nrow(indat))
 to_predict$Index<-as.factor(1:nrow(to_predict))
 ```
 
+#Correlation in association matrices
+
+```{r,echo=T}
+ade4::mantel.rtest(as.dist(D),as.dist(Dtraits))
+ade4::mantel.rtest(as.dist(Dint),as.dist(Dtraits))
+ade4::mantel.rtest(as.dist(D),as.dist(Dint))
+```
+
 # Baseline model
 
 Equal probability of flowering at anytime.
@@ -254,7 +252,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=4000,n.burnin=3500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -362,7 +360,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewMonth=Ynew_dat$Month)
     
   #MCMC options
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=4000,n.burnin=3500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=10,n.iter=50000,n.burnin=46000,n.chains=2,DIC=F)
     return(model)
 }
 
@@ -408,10 +406,11 @@ getChains<-function(mod,indat,to_predict){
     #triple index
   splitpc[c("e")]<-lapply(
     splitpc[c("e")],function(x){
-    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
-    colnames(sv)<-c("jPlant","Site")
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+),(\\d+)]"))[,3:5]
+    colnames(sv)<-c("jPlant","Site","Month")
     sv$jPlant<-as.numeric(as.character(sv$jPlant))
     sv$Site<-as.numeric(as.character(sv$Site))
+    sv$Month<-as.numeric(as.character(sv$Month))
     sv<-sv %>% inner_join(jagsIndexPlants)
 
     pc<-data.frame(x,sv)
@@ -430,7 +429,8 @@ chains$phylogenetic_attraction<-getChains(models$phylogenetic_attraction,indat,t
 ```{r,fig.height=15,fig.width=15}
 chains$phylogenetic_attraction %>% filter(parameter %in% c("alpha")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(~Plant,scales="free")
 
-chains$phylogenetic_attraction %>% filter(parameter %in% c("e")) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(Month~Plant,scales="free")
+#Sample random e to view
+chains$phylogenetic_attraction %>% filter(parameter %in% c("e"),jPlant==1) %>% ggplot(.,aes(x=Draw,col=as.factor(chain),y=value)) + geom_line() + facet_wrap(Month~Site,scales="free")
 ```
 
 ```{r}
@@ -892,7 +892,7 @@ allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  grou
 allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
 ```
 
-```{r}
+```{r,fig.height=12}
 allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + labs(y="Prediction Error") + theme_bw() + facet_wrap(~Plant,ncol=3,scales="free") + coord_flip()
 ```
 
@@ -943,16 +943,23 @@ Drymonia teuscheri v Drymonia collegarum
 observed<-indat %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) 
 
 observed %>% ggplot(.,aes(x=Site,y=p,col=Plant)) + geom_point(size=4) + ggtitle("Observed")
+observed %>% spread(Plant,p) %>% ggplot(.,aes(x=`Drymonia teuscheri`,y=`Drymonia collegarum`)) + geom_point(size=4) + ggtitle("Observed") + coord_equal()
 
 to_predict %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=Site,y=p,col=Plant)) + geom_point(size=4) + ggtitle("Prediction")
 
-models<-unique(allchains$Model)
+model_names<-unique(allchains$Model)
 
-for(x in models){
-  allchains %>% filter(parameter %in% "p",Model==x) %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum"))  %>% ggplot(.) + geom_density(aes(x=value)) + facet_wrap(~Site) + geom_vline(data=observed,aes(xintercept=p,col=Plant),size=2,alpha=.5) + ggtitle(x)
-
+for(x in model_names){
+  allchains %>% filter(parameter %in% "p",Model==x) %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum"))  %>% ggplot(.) + geom_density(aes(x=value),fill="black") + facet_wrap(~Site) + geom_vline(data=observed,aes(xintercept=p,col=Plant),size=2,alpha=.5) + ggtitle(x)
 }
 
+    allchains %>% filter(parameter %in% "p") %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>%select(Model,Draw,chain,Plant,Site,value) %>%  group_by(Model,Draw,chain,Plant,Site) %>% summarize(value=mean(value)) %>% spread(Plant,value) %>% ggplot(.,aes(x=`Drymonia teuscheri`,y=`Drymonia collegarum`)) + geom_point() + coord_equal() + facet_grid(Site~Model)
+
+  allchains %>% filter(parameter %in% "discrepancy") %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum"))  %>% ggplot(.) + geom_density(aes(x=value,fill=Model))
+  
+    allchains %>% filter(parameter %in% "discrepancy") %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Model,Plant) %>% summarize(mean=mean(value)) %>% arrange(Plant,mean)
+
+    
 ```
 
 ```{r,echo=T}

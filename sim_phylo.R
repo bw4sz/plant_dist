@@ -5,9 +5,9 @@ library(reshape2)
 source("functions.R")
 
 ##Attraction
-lambda=0.1
+lambda=2
 omega=1
-gamma=1
+gamma=5
 
 #distance
 #d<-as.matrix(cophenetic(phy))

@@ -1,0 +1,223 @@
+---
+title: "Co-flowering and hummingbird overlap in Neotropical Gesneriaceae: Generate Latent Interaction Matrix"
+author: "Ben Weinstein"
+date: "5/30/2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r,message=F,warning=F}
+library(knitr)
+opts_chunk$set(message=F,warning=F,echo=F)
+
+library(ape)
+library(kableExtra)
+library(boot)
+library(dplyr)
+library(ggplot2)
+library(phytools)
+library(stringr)
+library(splines)
+library(R2jags)
+library(reshape2)
+library(tidyr)
+```
+
+# Interactions
+
+```{r}
+#Interactions
+interactions<-read.csv("data/cleaned/interactions.csv",row.names=1)
+head(interactions) %>% kable() %>% kable_styling()
+```
+
+# Phylogeny
+
+```{r}
+phy<-read.newick("data/SantaLucia_tree_Newick")
+species<-str_match(phy$tip.label,"_(\\w+)")[,2]
+tspecies<-unique(interactions$Plant)
+to_join<-data.frame(Plant=tspecies,phylo=str_match(tspecies," (\\w+)")[,2])
+new_names<-data.frame(phylo=species) %>% inner_join(to_join)
+phy$tip.label<- as.character(new_names$Plant)
+plot(phy)
+
+#variance covariance matrix
+vcov<-vcv(phy,corr = T)
+
+#Identity matrix
+I<-diag(nrow(vcov))
+```
+
+# Traits
+```{r}
+traits<-read.csv("data/Species_SantaLucia.csv")
+
+#improve column names
+traits<-traits %>% select(Plant=Iplant_Double,min_corolla_tube=Lt,corolla_length=Lc,vertical_diameter= D,stamen_length=S,stamen_exertion=E)
+
+#order the factors
+
+head(traits) %>% kable() %>% kable_styling()
+```
+
+Sum interaction matrix plotted in plant phylogenetic order.
+
+```{r}
+m<-interactions %>% filter(Plant %in% phy$tip.label) %>% group_by(Hummingbird,Plant) %>% summarize(n=n())
+m$Plant<-factor(m$Plant,levels=phy$tip.label)
+ggplot(m,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90)) + scale_fill_continuous(low="blue",high="Red")
+```
+
+# Estimate interaction probability
+
+The goal is to generate a distance matrix of mean niche overlap among plants.
+
+```{r}
+ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme(axis.text.x=element_text(angle=-90))
+```
+
+```{r}
+#Impute non-detections. Start by assuming all hummingbirds occur at all elevations (can be relaxed)
+
+sumf<-interactions %>% group_by(Hummingbird,Plant,ID,Date,ele) %>% dplyr::summarize(Yobs=n())
+
+#Create emptys zeros
+impute_zero<-function(x,Hummingbird){
+  df<-data.frame(Hummingbird=Hummingbird)
+}
+
+zero_count<-sumf %>% group_by(Plant,ID,Date,ele) %>% do(impute_zero(.,Hummingbird=levels(sumf$Hummingbird)))
+zero_count<-zero_count %>% anti_join(sumf)
+
+#add a dummy label for presence absence
+indat<-bind_rows(sumf,data.frame(zero_count,Yobs=0))
+```
+
+```{r}
+
+#align factors with phylogeny
+indat<-indat %>% filter(Plant %in% phy$tip.label)
+
+#Easiest to work with jags as numeric ordinal values
+indat$Hummingbird<-as.factor(indat$Hummingbird)
+indat$Plant<-factor(indat$Plant,levels=phy$tip.label)
+indat$jBird<-as.numeric(indat$Hummingbird)
+indat$jPlant<-as.numeric(indat$Plant)
+
+jagsIndexBird<-data.frame(Hummingbird=levels(indat$Hummingbird),jBird=factor(1:length(levels(indat$Hummingbird))))
+jagsIndexPlants<-data.frame(Plant=levels(indat$Plant),jPlant=factor(1:length(levels(indat$Plant))))
+
+#Turn Time and ID into numeric indexes
+indat$jTime<-as.numeric(as.factor(indat$Date))
+indat$jID<-as.numeric(as.factor(indat$ID))
+```
+
+```{r}
+#hold model objects
+models<-list()
+chains<-list()
+```
+
+# Poisson Interactions
+
+```{r}
+#Source model
+source("model/poisson_interactions_detection.R")
+
+#print model
+writeLines(readLines("model/poisson_interactions_detection.R"))
+
+#Run Model
+runModel<-function(Yobs_dat){
+  
+  #Parameters to track
+  ParsStage <- c("alpha","omega")
+  
+  InitStage<-function(){
+    list(z=array(dim=c(Dat$Birds,Dat$Plants,Dat$Cameras),data=max(Dat$Yobs)))
+  }
+  #Jags Data
+
+  Dat<-list(
+    Yobs=Yobs_dat$Yobs,
+    Birds=max(c(Yobs_dat$jBird)),
+    Bird=Yobs_dat$jBird,
+    Plant=Yobs_dat$jPlant,
+    Plants=max(c(Yobs_dat$jPlant)),
+    Cameras=max(Yobs_dat$jID),
+    Camera=Yobs_dat$jID,
+    Nobs=length(Yobs_dat$Yobs))
+  
+  #MCMC options
+    system.time(
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions_detection.jags",n.thin=1,inits = InitStage,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+    )
+    return(model)
+}
+
+models$intercept<-runModel(Yobs_dat=indat)
+```
+
+View Chains
+
+```{r}
+getChains<-function(mod){
+  
+  pc<-reshape2::melt(mod$BUGSoutput$sims.array)
+  colnames(pc)<-c("Draw","chain","par","value")
+  
+  #extract parameter name
+  pc$parameter<-data.frame(str_match(pc$par,"(\\w+)"))[,-1]
+  
+  #Extract index
+  splitpc<-split(pc,pc$parameter)
+  
+    #single index
+  splitpc[c("omega")]<-lapply(
+    splitpc[c("omega")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)"))[,3]
+    pc<-data.frame(x,jBird=sv)
+    })
+  
+  #double index
+  splitpc[c("alpha")]<-lapply(
+    splitpc[c("alpha")],function(x){
+    sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+),(\\d+)]"))[,3:4]
+    colnames(sv)<-c("jBird","jPlant")
+    pc<-data.frame(x,sv)
+    })
+  
+  chains<-bind_rows(splitpc)
+return(chains)}
+```
+
+```{r,fig.height=8,fig.width=12}
+chains$intercept<-getChains(models$intercept)
+
+#merge species names
+chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
+
+#alpha
+chains$intercept %>% filter(parameter %in% "alpha",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
+
+chains$intercept %>% filter(parameter %in% "omega") %>% ggplot(.,aes(x=Hummingbird,y=value)) + geom_boxplot() + coord_flip()
+
+```
+
+### P(Interaction)
+
+```{r,fig.height=8,fig.width=8}
+chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% ggplot(.,aes(fill=n,x=Plant,y=Hummingbird)) + geom_tile() + theme(axis.text.x = element_text(angle=-90)) + labs(fill="P(Interaction)") + scale_fill_continuous(low="blue",high="Red")
+```
+
+# Niche Overlap
+
+Euclidean Distance in the I(Interaction)
+
+```{r}
+alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% acast(Hummingbird~Plant)
+hist(alpha_matrix/max(alpha_matrix))
+write.csv(alpha_matrix,"data/InteractionIntensity.csv")
+```
