@@ -28,7 +28,7 @@ cat("
     
     #Observation - probability of flowering
     prediction[x] ~ dbern(p_new[x])
-    logit(p_new[x])<- alpha[NewPlant[[x]] + e[NewPlant[x],NewSite[x]]
+    logit(p_new[x])<- alpha[NewPlant[x]] + e[NewPlant[x],NewSite[x]]
     
     #predictive error
     pred_error[x] <- abs(Ypred[x] - prediction[x])

@@ -938,6 +938,23 @@ allchains %>% filter(parameter %in% "e") %>% group_by(Model,Plant,Site,Month) %>
 Grab an example
 Drymonia teuscheri v Drymonia collegarum
 
+```{r}
+
+observed<-indat %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) 
+
+observed %>% ggplot(.,aes(x=Site,y=p,col=Plant)) + geom_point(size=4) + ggtitle("Observed")
+
+to_predict %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=Site,y=p,col=Plant)) + geom_point(size=4) + ggtitle("Prediction")
+
+models<-unique(allchains$Model)
+
+for(x in models){
+  allchains %>% filter(parameter %in% "p",Model==x) %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum"))  %>% ggplot(.) + geom_density(aes(x=value)) + facet_wrap(~Site) + geom_vline(data=observed,aes(xintercept=p,col=Plant),size=2,alpha=.5) + ggtitle(x)
+
+}
+
+```
+
 ```{r,echo=T}
 D["Drymonia teuscheri","Drymonia collegarum"]
 Dtraits["Drymonia teuscheri","Drymonia collegarum"]
