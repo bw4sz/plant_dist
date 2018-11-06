@@ -54,12 +54,12 @@ transects<-transects %>% filter(!is.na(ele))
 # Interactions
 
 ```{r,eval=T}
-intdata<-as.matrix(read.csv("data/InteractionIntensity.csv",row.names = 1))
-
+intdata<-as.matrix(read.csv("data/InteractionProbability.csv",row.names = 1))
+Dint<-as.matrix(dist(t(intdata)))
 rownames(Dint)<-str_replace(rownames(Dint),"\\."," ")
 colnames(Dint)<-str_replace(colnames(Dint),"\\."," ")
 
-ggbiplot(prcomp(intdata),scale = 1) 
+ggbiplot(prcomp(t(intdata)),scale = 1) 
 
 Dint<-Dint/max(Dint)
 
@@ -140,7 +140,6 @@ transects %>% group_by(Plant,Year) %>% summarize(mean=mean(julian),lower=quantil
 transects %>% group_by(Plant,julian) %>% summarise(n=sum(Flowers)) %>% filter(!is.na(n)) %>%
 ggplot(.,aes(x=julian,y=n)) + geom_point(size=2) + labs(col="Year") + theme_bw() + facet_wrap(~Plant,scales = "free_y")
 ```
-
 
 ```{r,fig.height=15}
 ## Infer absences
@@ -252,7 +251,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=20000,n.burnin=19500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -360,7 +359,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewMonth=Ynew_dat$Month)
     
   #MCMC options
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=10,n.iter=50000,n.burnin=46000,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=50000,n.burnin=49500,n.chains=2,DIC=F)
     return(model)
 }
 
@@ -615,7 +614,6 @@ ggplot(result,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2
 ```
 
 ```{r}
-
 int_effect<-chains$interaction_attraction %>% filter(parameter %in% c("lambda_cov","omega","gamma")) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain) %>% do(cor_effect(lambda=.$lambda_cov,D=Dint,omega=.$omega,gamma=.$gamma)) %>% group_by(Distance) %>% filter(!Distance==0) %>% summarize(mean=mean(Correlation),lower=quantile(Correlation,0.05),upper=quantile(Correlation,0.95))
 
 ggplot(int_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Correlation")
@@ -696,9 +694,9 @@ allchains %>% filter(parameter %in% "p") %>% group_by(Model,jPlant,Site) %>% mut
 Glossoloma purpureum
 
 ```{r}
-indat %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom") 
+indat %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site,Month) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom") 
 
-to_predict %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom")  + ggtitle("Prediction")
+to_predict %>% filter(Plant=="Glossoloma purpureum") %>% group_by(Plant,Site,Month) %>% summarize(p=sum(n)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p)) + geom_point() + labs(x="Site",y="Proportion of data in bloom")  + ggtitle("Prediction")
 
 allchains %>% filter(parameter %in% "Ynew",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(p=sum(value)/n()) %>% ggplot(.,aes(x=as.factor(Site),y=p,col=Model)) + geom_point() + labs(x="Site",y="Proportion of data in bloom") 
 
@@ -709,6 +707,9 @@ allchains %>% filter(parameter %in% "alpha",Plant=="Glossoloma purpureum") %>% g
 allchains %>% filter(parameter %in% "e",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% mutate(value=inv.logit(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="inv.logit(e)") + ggtitle("Effect of association on flowering") 
 
 allchains %>% filter(parameter %in% "discrepancy",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="Obs - p(Flowering)") + ggtitle("Discrepancy")
+
+allchains %>% filter(parameter %in% "pred_error",Plant=="Glossoloma purpureum") %>% group_by(Model,Plant,Site) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(x=as.factor(Site),y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper)) + labs(x="Site",y="Obs - p(Flowering)") + ggtitle("Pred Error")
+
 
 ```
 
@@ -889,7 +890,7 @@ allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  grou
 ```
 
 ```{r}
-allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Discrepancy") + theme_bw()
+allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,Plant) %>% summarize(value=sum(value)/n()) %>% group_by(Model,Plant) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% arrange(mean) %>% ggplot(.,aes(x=Plant,y=mean,col=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.75,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Prediction Error") + theme_bw()
 ```
 
 ```{r,fig.height=12}
@@ -897,7 +898,7 @@ allchains %>% filter(parameter %in% "pred_error") %>% group_by(Draw,chain,Model,
 ```
 
 ```{r}
-allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5,position=position_dodge(width=0.4)) + coord_flip() + labs(y="Sum Prediction Error") + theme_bw() 
+allchains %>% filter(parameter %in% "fitpred") %>% mutate(value=value) %>%  group_by(Model) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ggplot(.,aes(y=mean,x=Model)) + geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5) + coord_flip() + labs(y="Sum Prediction Error") + theme_bw() 
 ```
 
 ### Tables
@@ -958,8 +959,6 @@ for(x in model_names){
   allchains %>% filter(parameter %in% "discrepancy") %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum"))  %>% ggplot(.) + geom_density(aes(x=value,fill=Model))
   
     allchains %>% filter(parameter %in% "discrepancy") %>% filter(Plant %in% c("Drymonia teuscheri","Drymonia collegarum")) %>% group_by(Model,Plant) %>% summarize(mean=mean(value)) %>% arrange(Plant,mean)
-
-    
 ```
 
 ```{r,echo=T}
@@ -985,7 +984,6 @@ allchains %>% filter(parameter %in% "e") %>% group_by(Model,Plant,Site) %>% summ
 allchains %>% filter(parameter %in% "p") %>% group_by(Model,Plant,Site) %>% summarize(p=mean(value)) %>% spread(Plant,p) %>% ungroup() %>% select(-Site) %>% group_by(Model) %>% do(cormat(.))%>% filter(Var1=="Drymonia teuscheri",Var2=="Drymonia collegarum") %>% mutate(Correlation_P=value) %>% select(-value)
 
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,Plant,Site) %>% summarize(p=sum(value)/n()) %>% spread(Plant,p) %>% ungroup() %>% select(-Site) %>% group_by(Model) %>% do(cormat(.))%>% filter(Var1=="Drymonia teuscheri",Var2=="Drymonia collegarum") %>% mutate(Correlation_Ynew=value) %>% select(-value)
-
 ```
 
 ```{r}

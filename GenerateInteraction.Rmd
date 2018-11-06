@@ -81,7 +81,7 @@ ggplot(m,aes(x=Hummingbird,y=Plant,fill=n>0)) + geom_tile() + theme_bw() + theme
 ```{r}
 #Impute non-detections. Start by assuming all hummingbirds occur at all elevations (can be relaxed)
 
-sumf<-interactions %>% group_by(Hummingbird,Plant,ID,Date,ele) %>% dplyr::summarize(Yobs=n())
+sumf<-interactions %>% group_by(Hummingbird,Plant,ID,Date,ele) %>% dplyr::summarize(Yobs=n()) %>% mutate(Yobs=(Yobs>0)*1)
 
 #Create emptys zeros
 impute_zero<-function(x,Hummingbird){
@@ -124,10 +124,10 @@ chains<-list()
 
 ```{r}
 #Source model
-source("model/poisson_interactions_detection.R")
+source("model/intercept_interactions_detection.R")
 
 #print model
-writeLines(readLines("model/poisson_interactions_detection.R"))
+writeLines(readLines("model/intercept_interactions_detection.R"))
 
 #Run Model
 runModel<-function(Yobs_dat){
@@ -152,7 +152,7 @@ runModel<-function(Yobs_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions_detection.jags",n.thin=1,inits = InitStage,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/intercept_interactions_detection.jags",n.thin=1,inits = InitStage,n.iter=5000,n.burnin=4500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -218,6 +218,5 @@ Euclidean Distance in the I(Interaction)
 
 ```{r}
 alpha_matrix<-chains$intercept %>% filter(parameter %in% "alpha") %>% group_by(Hummingbird,Plant) %>% summarize(n=mean(value)) %>% acast(Hummingbird~Plant)
-hist(alpha_matrix/max(alpha_matrix))
-write.csv(alpha_matrix,"data/InteractionIntensity.csv")
+write.csv(alpha_matrix,"data/InteractionProbability.csv")
 ```

@@ -1,61 +1,46 @@
 sink("model/intercept_interactions_detection.jags")
 cat("
     model {
-    
-    #Latent Interaction probability
-    for (i in 1:Birds){
-      for (j in 1:Plants){
-        #P(Interaction)
-        logit(phi[i,j])<-alpha[Bird[i],Plant[j]] 
-      } 
-    }
-
 
     # Bird presence at each camera (placed on a single flower Plant (j))
     for (i in 1:Birds){
       for( j in 1:Plants){
         for(k in 1:Cameras){
-
-          #Latent Interaction State for each camera, conditional on presence
-          eff.phi[i,j,k] = occ[i,j,k] * phi[i,j]
-          z[i,j,k]~dbern(eff.phi[i,j,k])
+          #Latent Interaction State for each camera
+          z[i,j,k]~dbern(alpha[i,j])
               } 
           }
       }
     
     #Observed interactions
-
     for (x in 1:Nobs){
 
-      #Probability of detection, conditional on presence and interaction
-      psi[x] = z[Bird[x],Plant[x],Camera[x]] * omega[Bird[x]]
-  
-      #Interaction Observation
+      #Probability of detection, conditional on interaction
+      psi[x] <- omega[Bird[x]] * z[Bird[x],Plant[x],Camera[x]]
       Yobs[x] ~ dbern(psi[x])
     }
     
-    #Assess Model Fit
     #Priors
     
     #Species level priors
     for (i in 1:Birds){
-    
-      #Detection prior
-      omega[i] ~ dbeta(1,1)
-
-      #Flat elevation intercept prior
-      alpha_elev[i] ~ dnorm(0,0.386)
-  
-      #Elevation presence priors
-      beta[i] ~ dnorm(0,0.386)
-  
       for (j in 1:Plants){
 
-        #Flat interaction prior
+        #Flat interaction intensity prior
         alpha[i,j] ~ dbeta(1,1)
       } 
       }
     
+    #Observation model
+    #Detect priors, logit transformed - Following lunn 2012 p85
+    for(x in 1:Birds){
+    logit(omega[x])<-dcam[x]
+    dcam[x] ~ dnorm(omega_mu,omega_tau)
+    }
+    
+    omega_mu ~ dnorm(0,0.386)
+    omega_tau <- pow(omega_sigma,-2)
+    omega_sigma ~ dunif(0,0.25)
     }
     ",fill=TRUE)
 
