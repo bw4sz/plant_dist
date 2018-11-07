@@ -10,8 +10,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-Ideas:
-
 ```{r,message=F,warning=F,include=F}
 library(knitr)
 opts_chunk$set(message=F,warning=F,echo=F)
@@ -810,12 +808,12 @@ allpars %>% filter(parameter %in% "lambda_cov") %>% ggplot(.,aes(x=Model,y=mean)
 ## Decay in autocorrelation effect
 
 ```{r}
-phy_effect$Model<-"Phylogenetic Attraction"
-phyrepulse_effect$Model<-"Phylogenetic Repulsion"
-trait_effect$Model<-"Trait Attraction"
-traitrepulse_effect$Model<-"Trait Repulsion"
-intrepulse_effect$Model<-"Interaction Repulsion"
-int_effect$Model<-"Interaction Attraction"
+phy_effect$Model<-"phylogenetic_attraction"
+phyrepulse_effect$Model<-"phylogenetic_repulsion"
+trait_effect$Model<-"trait_attraction"
+traitrepulse_effect$Model<-"trait_tepulsion"
+intrepulse_effect$Model<-"interaction_repulsion"
+int_effect$Model<-"interaction_attraction"
 
 est_effect<-bind_rows(list(phy_effect,phyrepulse_effect,trait_effect,traitrepulse_effect,traitrepulse_effect,int_effect,intrepulse_effect))
 ggplot(est_effect,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Covariance") + facet_wrap(~Model,scales="free",ncol=2)
@@ -985,6 +983,89 @@ allchains %>% filter(parameter %in% "p") %>% group_by(Model,Plant,Site) %>% summ
 
 allchains %>% filter(parameter %in% "Ynew") %>% group_by(Model,Plant,Site) %>% summarize(p=sum(value)/n()) %>% spread(Plant,p) %>% ungroup() %>% select(-Site) %>% group_by(Model) %>% do(cormat(.))%>% filter(Var1=="Drymonia teuscheri",Var2=="Drymonia collegarum") %>% mutate(Correlation_Ynew=value) %>% select(-value)
 ```
+
+# Figures for the paper
+
+# Figure 1
+
+```{r}
+transects_zero %>% mutate(Predict=as.factor(Year==2017)) %>%mutate(Predict=recode(Predict,`FALSE`="Training",`TRUE`="Prediction")) %>% group_by(Plant,Month,Predict) %>% summarize(p=sum(n)/n()) %>% ggplot(aes(y=p,col=Predict,x=as.factor(Month))) + geom_point(size=2) + geom_line(aes(group=Predict)) + facet_wrap(~Plant,ncol = 4) + labs(y="Proportion of data in flower",x="Month") + theme_bw()
+ggsave("Figures/ProportionFlower.png",height=7,width=11)
+```
+
+Flowering patterns
+
+# Example Flowering patterns
+
+```{r}
+transects_zero %>% filter(Year==2016) %>% mutate(Site=as.factor(Site)) %>% mutate(Site=recode(Site,`1`="1300m-1500m",`2`="1500m-1700m",`3`="1700m-1900m",`4`="1900m-2100m",`5`="2100m-2300m",`6`="2300m-2500m")) %>% ggplot(.) + geom_tile(aes(x=as.factor(Month),y=Plant,fill=as.factor(n>0))) + labs(fill="Flowering")  + theme_bw() + facet_wrap(~Site) + scale_fill_manual(values=c("grey80","black")) + labs(x="Month")
+ggsave("Figures/SampleYear.svg",height=4,width=9)
+ggsave("Figures/SampleYear.png",height=4,width=9)
+```
+
+# Figure 2 Phylogeny
+
+```{r}
+svg("Figures/Phylo.svg")
+plot(phy)
+dev.off()
+
+jpg("Figures/Phylo.png",dpi=400)
+plot(phy)
+dev.off()
+```
+
+# Figure 3
+
+Association Matrices
+
+```{r}
+
+cor_matrices<-list()
+
+models_to_run<-c("phylogenetic_attraction","trait_attraction","interaction_attraction")
+#which distance matrix to use for each
+D_to_use<-list(D,Dtraits,Dint)
+
+for(x in 1:length(models_to_run)){
+  result<-allchains %>% filter(parameter %in% c("omega","gamma","lambda_cov"),Model %in% models_to_run[x]) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain)  %>% do(tauC_attraction(omega=.$omega,gamma=.$gamma,I=I,D=D_to_use[[x]],lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+    result$Model<-models_to_run[x]
+  cor_matrices[[x]]<-result
+}
+
+models_to_run<-c("phylogenetic_repulsion","trait_repulsion","interaction_repulsion")
+
+for(x in 1:length(models_to_run)){
+  result<-allchains %>% filter(parameter %in% c("omega","gamma","lambda_cov"),Model %in% models_to_run[x]) %>% select(-par) %>% spread(parameter,value) %>% group_by(Draw,chain)  %>% do(tauC_repulsion(omega=.$omega,gamma=.$gamma,I=I,D=D_to_use[[x]],lambda_cov=.$lambda_cov)) %>% group_by(Var1,Var2) %>% filter(!is.na(value)) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95))
+  result$Model<-models_to_run[x]
+  cor_matrices[[x+3]]<-result
+}
+
+result<-bind_rows(cor_matrices)
+
+result %>% mutate(Model=recode(Model,trait_repulsion="Trait Repulsion",trait_attraction = "Trait Attraction",phylogenetic_repulsion = "Phylogenetic Repulsion",phylogenetic_attraction ="Phylogenetic Attraction",interaction_repulsion ="Visitor Repulsion",interaction_attraction="Visitor Attraction",baseline="Baseline")) %>% ggplot(.,aes(x=Var1,y=Var2,fill=mean)) + geom_tile() + scale_fill_gradient2(low="red",mid="white",high="blue") + labs(x="",y="",fill="Mean Correlation") + theme(axis.text.x = element_text(angle=-90)) + facet_wrap(~Model,ncol=2) 
+ggsave("Figures/CorrelationMatrix.png",height=9,width=9)
+```
+
+Decay pattern
+
+```{r}
+
+est_effect %>% mutate(Model=recode(Model,trait_repulsion="Trait Repulsion",trait_attraction = "Trait Attraction",phylogenetic_repulsion = "Phylogenetic Repulsion",phylogenetic_attraction ="Phylogenetic Attraction",interaction_repulsion ="Visitor Repulsion",interaction_attraction="Visitor Attraction",baseline="Baseline")) %>% ggplot(.,aes(x=Distance,y=mean)) + geom_line() + geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.5) + theme_bw() + labs(x="Distance",y="Correlation") + facet_wrap(~Model,scales="free",ncol=2)
+ggsave("Figures/Decay.png",height=5,width=4)
+```
+
+# Figure 4
+
+Model Fit and Prediction Fit
+
+```{r}
+allchains %>% filter(parameter %in% c("fit","fitpred")) %>% mutate(value=value) %>%  group_by(Model,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ungroup() %>% mutate(parameter = recode(parameter,fit = "Observed",fitpred="Prediction"),Model=recode(Model,trait_repulsion="Trait Repulsion",trait_attraction = "Trait Attraction",phylogenetic_repulsion = "Phylogenetic Repulsion",phylogenetic_attraction ="Phylogenetic Attraction",interaction_repulsion ="Visitor Repulsion",interaction_attraction="Visitor Attraction",baseline="Baseline")) %>% ggplot(.,aes(y=mean,x=Model))   + 
+ geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5) + coord_flip() + labs(y="Discrepancy") + theme_bw() + facet_wrap(~parameter,scales="free")
+ggsave("Figures/Fit.png",height=3,width=8)
+```
+
+Supplamental figures
 
 ```{r}
 save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
