@@ -31,7 +31,7 @@ cat("
     logit(p_new[x])<-alpha[PredPlant[x]]
     
     #predictive error
-    pred_error[x] <- abs(Ypred[x] - prediction[x])
+    pred_error[x] <- abs(Ypred[x] - p_new[x])
     }
     
     
