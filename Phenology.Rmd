@@ -148,7 +148,7 @@ transects$Site<-as.numeric(as.factor(cut(transects$ele,seq(1300,2500,200))))
 
 ```{r}
 #limit to peak flowering, more than 5% of plants for the year are in bloom.
-sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=n(),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n >sum(n)*0.05) %>% mutate(n=(n>0)*1)
+sumf<-transects %>% group_by(Plant,Site,Month,Year) %>% dplyr::summarize(n=sum(Flowers),ele=mean(ele)) %>% mutate(Year=as.factor(Year))%>% group_by(Plant,Year) %>% filter(n >sum(n)*0.05) %>% mutate(n=(n>0)*1)
 
 #Which combinations are sampled.
 sampled<-sumf %>% ungroup() %>% distinct(Site,Month,Year) %>% arrange(Site,Month,Year) %>% group_by(Site,Month,Year) %>% do(all_plants(.))
@@ -987,8 +987,7 @@ transects_zero %>% mutate(Predict=as.factor(Year==2017)) %>% filter(Plant %in% c
 
 allchains %>% filter(parameter %in% "p_new",Model %in% c("baseline","baseline_site"),Plant %in% c("Besleria solanoides")) %>% group_by(Model,Plant,Month,Site) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_line(aes(x=Month,y=mean,col=Model))+ scale_x_continuous(breaks = 1:12) + geom_point(data=pplot[pplot$Plant=="Besleria solanoides",],aes(y=p,shape=Predict,x=Month))+ facet_wrap(Site~Plant,ncol=2) + labs(y="Proportion of data in flower",x="Month") + theme_bw() 
 
-allchains %>% filter(parameter %in% "p_new",Model %in% c("baseline","baseline_site","trait_repulsion","trait_attraction","interaction_repulsion"),Plant %in% c("Besleria solanoides")) %>% group_by(Model,Plant,Month,Site) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_line(aes(x=Month,y=mean,col=Model))+ scale_x_continuous(breaks = 1:12) + geom_point(data=pplot[pplot$Plant=="Besleria solanoides",],aes(y=p,shape=Predict,x=Month))+ facet_wrap(Site~Plant) + labs(y="Proportion of data in flower",x="Month") + theme_bw() 
-
+allchains %>% filter(parameter %in% "p_new",Model %in% c("baseline","baseline_site","interaction_attraction"),Plant %in% c("Besleria solanoides")) %>% group_by(Model,Plant,Month,Site) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_line(aes(x=Month,y=mean,col=Model))+ scale_x_continuous(breaks = 1:12) + geom_point(data=pplot[pplot$Plant=="Besleria solanoides",],aes(y=p,shape=Predict,x=Month))+ facet_wrap(Site~Plant,ncol=2) + labs(y="Proportion of data in flower",x="Month") + theme_bw() 
 ```
 
 ```{r,fig.height=10,fig.width=12}
@@ -1139,5 +1138,5 @@ ggsave("Figures/Fit.png",height=3,width=8)
 Supplamental figures
 
 ```{r}
-#save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
+save.image("/Users/ben/Dropbox/Gesner/Phenology.RData")
 ```

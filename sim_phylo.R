@@ -11,13 +11,14 @@ d<-d/max(d)
 ##Attraction
 lambda=2
 omega=1
-gamma=1
+gamma=2
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
 vCov=(omega*C[,] + (1-omega) * I)*gamma
 r<-data.frame(rmvnorm(1e4,mean=means,sigma=vCov))
 colnames(r)<-colnames(vCov)
+range(r)
 ggplot(r,aes(x=inv.logit(`Drymonia teuscheri`),y=inv.logit(`Drymonia collegarum`))) + geom_point() + coord_equal()
 ggplot(r,aes(x=inv.logit(`Drymonia teuscheri`),y=inv.logit(`Besleria solanoides`))) + geom_point() + coord_equal()
 
