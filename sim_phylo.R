@@ -8,8 +8,7 @@ cor_effect<-function(lambda,D,omega,gamma){
   vCov=vCov*gamma
   r<-data.frame(rmvnorm(1e4,mean=means,sigma=vCov))
   colnames(r)<-colnames(vCov)
-  invlogitR<-inv.logit(as.matrix(r))
-  cormatrix<-cor(invlogitR)
+  cormatrix<-cor(r)
   data.frame(lambda,Distance=as.numeric(D),Correlation=as.numeric(cormatrix))
 }
 
@@ -20,7 +19,7 @@ d<-d/max(d)
 ##Attraction
 lambda=2
 omega=1
-gamma=2
+gamma=8
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)
@@ -41,13 +40,12 @@ cor_effect_repulsion<-function(lambda,D,omega,gamma){
   vCov=vCov*gamma
   r<-data.frame(rmvnorm(1e4,mean=means,sigma=solve(vCov)))
   colnames(r)<-colnames(vCov)
-  invlogitR<-inv.logit(as.matrix(r))
-  cormatrix<-cor(invlogitR)
+  cormatrix<-cor(r)
   data.frame(lambda,Distance=as.numeric(D),Correlation=as.numeric(cormatrix))
 }
 lambda=1
 omega=1
-gamma=20
+gamma=5
 
 means<-rep(0,nrow(d))
 C<-exp(-lambda*d)

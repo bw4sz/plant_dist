@@ -251,7 +251,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=4,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -353,7 +353,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline_site.jags",n.thin=2,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline_site.jags",n.thin=4,n.iter=20000,n.burnin=19000,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -465,7 +465,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewMonth=Ynew_dat$Month)
     
   #MCMC options
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=2,n.iter=30000,n.burnin=29500,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=4,n.iter=50000,n.burnin=49000,n.chains=2,DIC=F)
     return(model)
 }
 
@@ -993,7 +993,7 @@ allchains %>% filter(parameter %in% "p_new",Model %in% c("baseline","baseline_si
 ```
 
 ```{r,fig.height=10,fig.width=12}
-ynewpredict<-allchains %>% filter(parameter %in% "p_new") %>% group_by(Model,Plant,Month) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_ribbon(aes(x=Month,ymin=lower,ymax=upper,fill=Model,group=Model),alpha=0.6)  + facet_wrap(~Plant) + scale_x_continuous(breaks=1:12)
+ynewpredict<-allchains %>% filter(parameter %in% "p_new",Model %in% "interaction_attraction") %>% group_by(Model,Plant,Month) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_ribbon(aes(x=Month,ymin=lower,ymax=upper,,fill=Model,group=Model),alpha=0.6,col="black") + geom_line(aes(x=Month,y=mean),linetype="dashed",col="black")  + facet_wrap(~Plant) + scale_x_continuous(breaks=1:12)
 
 pplot<-transects_zero %>% mutate(Predict=as.factor(Year==2017)) %>%mutate(Predict=recode(Predict,`FALSE`="Training",`TRUE`="Prediction")) %>% group_by(Plant,Month,Predict) %>% summarize(p=sum(n)/n())
 
@@ -1140,6 +1140,20 @@ Model Fit and Prediction Fit
 allchains %>% filter(parameter %in% c("fit","fitpred")) %>% mutate(value=value) %>%  group_by(Model,parameter) %>% summarize(mean=mean(value),lower=quantile(value,0.05),upper=quantile(value,0.95)) %>% ungroup() %>% mutate(parameter = recode(parameter,fit = "Observed",fitpred="Prediction"),Model=recode(Model,trait_repulsion="Trait Repulsion",trait_attraction = "Trait Attraction",phylogenetic_repulsion = "Phylogenetic Repulsion",phylogenetic_attraction ="Phylogenetic Attraction",interaction_repulsion ="Visitor Repulsion",interaction_attraction="Visitor Attraction",baseline="Baseline",baseline_site="Baseline by Site")) %>% ggplot(.,aes(y=mean,x=Model))   + 
  geom_pointrange(aes(ymin=lower,ymax=upper),alpha=0.5) + coord_flip() + labs(y="Discrepancy") + theme_bw() + facet_wrap(~parameter,scales="free")
 ggsave("Figures/Fit.png",height=3,width=8)
+```
+
+# Figure 6
+
+Predictions from the best model
+
+```{r,fig.height=10,fig.width=12}
+ynewpredict<-allchains %>% filter(parameter %in% "p_new",Model %in% "interaction_attraction") %>% group_by(Model,Plant,Month) %>% summarize(mean=mean(value),upper=quantile(value,0.95),lower=quantile(value,0.05)) %>% ggplot(.) + geom_ribbon(aes(x=Month,ymin=lower,ymax=upper,group=Model),alpha=0.6,col="black") + geom_line(aes(x=Month,y=mean),linetype="dashed",col="black")  + facet_wrap(~Plant) + scale_x_continuous(breaks=1:12)
+
+pplot<-transects_zero %>% mutate(Predict=as.factor(Year==2017)) %>%mutate(Predict=recode(Predict,`FALSE`="Training",`TRUE`="Prediction")) %>% group_by(Plant,Month,Predict) %>% summarize(p=sum(n)/n())
+
+ynewpredict + geom_point(data=pplot,aes(y=p,col=Predict,x=Month))+ facet_wrap(~Plant,scales="free",ncol=3) + labs(y="Proportion of data in flower",x="Month") + theme_bw() 
+
+ggsave("Figures/BestPrediction.png",height=8,width=9)
 ```
 
 Supplamental figures

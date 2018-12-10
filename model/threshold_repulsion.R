@@ -69,7 +69,7 @@ cat("
     
     } 
     #Autocorrelation priors
-    gamma = 10
+    gamma ~ dunif(5,15)
     
     #Strength of covariance decay
     lambda_cov = 1
