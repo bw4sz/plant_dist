@@ -28,7 +28,7 @@ library(tidyr)
 library(dplyr)
 
 #optionally load
-load("/Users/ben/Dropbox/Gesner/Phenology.RData")
+#load("/Users/ben/Dropbox/Gesner/Phenology.RData")
 
 #holder for models and chains
 models<-list()
@@ -116,13 +116,6 @@ transects %>% group_by(Plant,Year) %>% filter(Flowers==max(Flowers)) %>% dplyr::
 
 ```{r,fig.height=10}
 ggplot(data=transects) + geom_density(aes(x=julian,fill=Plant)) + facet_wrap(~Plant,ncol=3) + theme_bw()
-```
-
-As range
-
-```{r,fig.height=10}
-
-transects %>% group_by(Plant,Year) %>% summarize(mean=mean(julian),lower=quantile(julian,0.05),upper=quantile(julian,0.95)) %>% ggplot(.,aes(x=Plant,col=as.factor(Year))) + geom_pointrange(aes(y=mean,min=lower,max=upper),size=0.3,position = position_jitter(height = 0.1)) + coord_flip() + labs(y="Julian Day",col="Year") + theme_bw()
 ```
 
 ```{r}
