@@ -251,7 +251,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=4,n.iter=200,n.burnin=100,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline.jags",n.thin=4,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -353,7 +353,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     
   #MCMC options
     system.time(
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline_site.jags",n.thin=4,n.iter=200,n.burnin=100,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file="model/threshold_baseline_site.jags",n.thin=4,n.iter=10000,n.burnin=9500,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -465,7 +465,7 @@ writeLines(readLines(paste("model/",mod_name,".R",sep="")))
     NewMonth=Ynew_dat$Month)
     
   #MCMC options
-      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=4,n.iter=200,n.burnin=100,n.chains=2,DIC=F)
+      model<-jags(data=Dat,parameters.to.save=ParsStage,model.file=paste("model/",mod_name,".jags",sep=""),n.thin=4,n.iter=30000,n.burnin=29000,n.chains=2,DIC=F)
     return(model)
 }
 
