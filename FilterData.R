@@ -67,5 +67,7 @@ transects<-transects %>% filter(!Observer %in% "Karen") %>% select(-Observer)
 #view dates
 transects %>% group_by(Date,Plant) %>% dplyr::summarize(s=sum(Flowers)) %>% ggplot(.,aes(x=Date,y=s)) + facet_wrap(~Plant,scales="free") + geom_point() +theme_bw()
 
+transects$Year<-years(transects$Date)
+
 #write files
 write.csv(transects,"data/cleaned/transects.csv")
