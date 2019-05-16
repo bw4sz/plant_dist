@@ -1,4 +1,4 @@
-sink("model/intercept_interactions.jags")
+sink("model/poisson_interactions.jags")
 cat("
     model {
     
