@@ -257,16 +257,16 @@ getChains<-function(mod,indat,to_predict){
     })
   
     #double index - observed
-  splitpc[c("p_new","discrepancy","p")]<-lapply(
-    splitpc[c("p_new","discrepancy","p")],function(x){
+  splitpc[c("discrepancy","p")]<-lapply(
+    splitpc[c("discrepancy","p")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
     })
   
   #Prediction
-    splitpc[c("pred_error")]<-lapply(
-    splitpc[c("pred_error")],function(x){
+    splitpc[c("pred_error","p_new")]<-lapply(
+    splitpc[c("pred_error","p_new")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(to_predict)
@@ -326,7 +326,7 @@ runModel<-function(Yobs_dat,Ynew_dat){
     Npreds=length(Ynew_dat$n),
     NewSite=Ynew_dat$Site,
     Ypred=Ynew_dat$n,
-    PredPlant=Ynew_dat$jPlant)
+    NewPlant=Ynew_dat$jPlant)
     
   #MCMC options
     system.time(
@@ -362,16 +362,16 @@ getChains<-function(mod,indat,to_predict){
     })
   
     #double index - observed
-  splitpc[c("p_new","discrepancy","p")]<-lapply(
-    splitpc[c("p_new","discrepancy","p")],function(x){
+  splitpc[c("discrepancy","p")]<-lapply(
+    splitpc[c("discrepancy","p")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
     })
   
   #Prediction
-    splitpc[c("pred_error")]<-lapply(
-    splitpc[c("pred_error")],function(x){
+    splitpc[c("pred_error","p_new")]<-lapply(
+    splitpc[c("pred_error","p_new")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(to_predict)
@@ -463,8 +463,8 @@ getChains<-function(mod,indat,to_predict){
   splitpc<-split(pc,pc$parameter)
   
       #double index - observed
-  splitpc[c("p_new","discrepancy","p")]<-lapply(
-    splitpc[c("p_new","discrepancy","p")],function(x){
+  splitpc[c("discrepancy","p")]<-lapply(
+    splitpc[c("discrepancy","p")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(indat)
@@ -478,8 +478,8 @@ getChains<-function(mod,indat,to_predict){
     })
   
   #Prediction
-    splitpc[c("pred_error")]<-lapply(
-    splitpc[c("pred_error")],function(x){
+    splitpc[c("pred_error","p_new")]<-lapply(
+    splitpc[c("pred_error","p_new")],function(x){
     sv<-data.frame(str_match(x$par,"(\\w+)\\[(\\d+)]"))[,3]
     pc<-data.frame(x,Index=sv)
     pc<-pc %>% inner_join(to_predict)

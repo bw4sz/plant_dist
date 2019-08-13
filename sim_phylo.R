@@ -12,10 +12,6 @@ cor_effect<-function(lambda,D,omega,gamma){
   data.frame(lambda,Distance=as.numeric(D),Correlation=as.numeric(cormatrix))
 }
 
-#distance
-d<-as.matrix(cophenetic(phy))
-d<-d/max(d)
-
 ##Attraction
 lambda=2
 omega=1

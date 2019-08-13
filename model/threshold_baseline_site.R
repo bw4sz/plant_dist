@@ -24,11 +24,9 @@ cat("
     #Prediction
     
     for(x in 1:Npreds){
-    #predict value
-    
     #Observation - probability of flowering
     prediction[x] ~ dbern(p_new[x])
-    logit(p_new[x])<-alpha[PredPlant[x],NewSite[x]]
+    logit(p_new[x])<-alpha[NewPlant[x],NewSite[x]]
     
     #predictive error
     pred_error[x] <- abs(Ypred[x] - p_new[x])
@@ -41,12 +39,11 @@ cat("
     #Priors
     
     #Species level priors
-    
-    for(i in 1:Sites){
-    for (j in 1:Plants){
+    for (i in 1:Plants){
+    for(j in 1:Sites){
     
     #Intercept flowering probability
-    alpha[j,i] ~ dnorm(0,0.386)
+    alpha[i,j] ~ dnorm(0,0.386)
     
     } 
     }

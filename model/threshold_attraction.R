@@ -73,7 +73,7 @@ cat("
     
     #Strength of covariance decay
     lambda_cov = 2
-    omega  = 1
+    omega = 1
     }
     ",fill=TRUE)
 
