@@ -67,7 +67,9 @@ transects<-transects %>% filter(!Observer %in% "Karen") %>% select(-Observer)
 #view dates
 transects %>% group_by(Date,Plant) %>% dplyr::summarize(s=sum(Flowers)) %>% ggplot(.,aes(x=Date,y=s)) + facet_wrap(~Plant,scales="free") + geom_point() +theme_bw()
 
-transects$Year<-years(transects$Date)
-
+transects$Year<-lubridate::year(transects$Date)
+transects$Month<-lubridate::month(transects$Date)
+#2013 August was practice for holger, barely any data
+transects<-transects %>% filter(!Year==2013)
 #write files
 write.csv(transects,"data/cleaned/transects.csv")

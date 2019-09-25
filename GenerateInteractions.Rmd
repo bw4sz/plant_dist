@@ -12,10 +12,8 @@ library(knitr)
 opts_chunk$set(message=F,warning=F,echo=F)
 
 library(ape)
-library(ggbiplot)
 library(kableExtra)
 library(boot)
-library(dplyr)
 library(ggplot2)
 library(phytools)
 library(stringr)
@@ -23,6 +21,8 @@ library(splines)
 library(R2jags)
 library(reshape2)
 library(tidyr)
+library(dplyr)
+
 ```
 
 # Interactions
@@ -30,8 +30,8 @@ library(tidyr)
 ```{r}
 #Interactions
 interactions<-read.csv("data/cleaned/interactions_all.csv",row.names=1)
-# to_keep<-interactions %>% group_by(Plant) %>% summarize(n=length(unique(ID))) %>% arrange(n) %>% filter(n>3) %>% .$Plant
-# interactions<-interactions %>% filter(Plant %in% to_keep) %>% droplevels()
+ to_keep<-interactions %>% group_by(Hummingbird) %>% summarize(n=length(unique(ID))) %>% arrange(n) %>% filter(n>3) %>% .$Hummingbird
+# interactions<-interactions %>% filter(Hummingbird %in% to_keep) %>% droplevels()
 
 gesner<-c("Columnea ciliata","Columnea kucyniakii","Drymonia tenuis","Columnea mastersonii","Gasteranthus quitensis","Drymonia teuscheri",
   "Columnea strigosa","Glossoloma oblongicalyx","Gasteranthus lateralis","Kohleria affinis","Besleria solanoides","Drymonia brochidodroma",
@@ -39,8 +39,10 @@ gesner<-c("Columnea ciliata","Columnea kucyniakii","Drymonia tenuis","Columnea m
   "Kohleria spicata")
 
 interactions<-interactions %>% filter(Plant %in% gesner) %>% droplevels()
-#Just the more common plants
 head(interactions) %>% kable() %>% kable_styling()
+dim(interactions)
+table(interactions$Hummingbird)
+
 ```
 
 # Estimate interaction probability
@@ -121,7 +123,7 @@ runModel<-function(Yobs_dat){
   
   #MCMC options
     system.time(
-      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions.jags",n.thin=2,n.iter=5000,n.burnin=4000,inits=InitStage,n.chains=2,DIC=F)
+      model<-jags(data=Dat, parameters.to.save=ParsStage,model.file="model/poisson_interactions.jags",n.thin=2,n.iter=10000,n.burnin=9500,inits=InitStage,n.chains=2,DIC=F)
     )
     return(model)
 }
@@ -168,6 +170,8 @@ chains$intercept<-getChains(models$intercept)
 #merge species names
 chains$intercept<-chains$intercept %>% left_join(jagsIndexBird) %>% left_join(jagsIndexPlants)
 
+chains$intercept %>% filter(parameter %in% "lambda",jPlant %in% c(5))  %>% ggplot(.,aes(y=value,x=Draw,col=as.factor(chain))) + geom_line() + facet_wrap(~Hummingbird,scales="free")
+
 #alpha
 chains$intercept %>% filter(parameter %in% "lambda",jPlant %in% c(5,10)) %>% ggplot(.,aes(x=value,fill=Plant)) + geom_histogram() + facet_wrap(~Hummingbird,scales="free")
 ```
@@ -188,8 +192,8 @@ write.csv(alpha_matrix,"data/Interaction_Intensity.csv")
 ```
 
 ```{r}
-ggbiplot(prcomp(t(alpha_matrix)),labels = colnames(alpha_matrix),varname.size = 2) + coord_cartesian(xlim=c(-2.5,2.5),ylim=c(-2.5,2.5))
+ggbiplot::ggbiplot(prcomp(t(alpha_matrix)),labels = colnames(alpha_matrix),varname.size = 2) + coord_cartesian(xlim=c(-2.5,2.5),ylim=c(-2.5,2.5))
 ggsave("Figures/biplot_labels.svg",height=6,width=8)
-ggbiplot(prcomp(t(alpha_matrix)))+ coord_cartesian(xlim=c(-2.5,2.5),ylim=c(-2.5,2.5))
+ggbiplot::ggbiplot(prcomp(t(alpha_matrix)))+ coord_cartesian(xlim=c(-2.5,2.5),ylim=c(-2.5,2.5))
 ggsave("Figures/biplot.svg",height=6,width=8)
 ```

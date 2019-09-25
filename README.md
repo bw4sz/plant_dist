@@ -1,4 +1,4 @@
-# Facilitation, not competition, in flowering timing in a diverse tropical hummingbird-visited plant community 
+# No evidence for phenological staggering among hummingbird-visited plants in a diverse tropical community 
 
 Authors: Ben Weinstein, Holger Beck, John Clark, Mathieu Perret, Catherine Graham
 
@@ -7,7 +7,11 @@ Abstract:
   
 Repository Contents:
 
-Data/: Data files for the analysis. Files underwent significant taxonomy cleaning and name standardization. Final files are in /cleaned. The transects.csv hold the flowering data for each elevation transect. The interactions_all.csv contains hummingbird visitation data to all plants at the site. See GenerateInteractions.Rmd for creating a Gesneriaceae only list.
+Data/: Data files for the analysis. Files underwent significant taxonomy cleaning and name standardization.
+
+To convert the raw data into cleaned data, see FilterData.R
+
+Final files are in /cleaned. The transects.csv hold the flowering data for each elevation transect. The interactions_all.csv contains hummingbird visitation data to all plants at the site. See GenerateInteractions.Rmd for creating a Gesneriaceae only list.
 
 GenerateInteractions.Rmd: Create the poisson interaction model for niche overlap among hummingbird species
 

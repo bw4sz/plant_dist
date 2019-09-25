@@ -15,7 +15,7 @@ interactions_2013<-read.csv("data/HummingbirdInteractions.csv",row.names=1)
 interactions_2013<-interactions_2013 %>% filter(!is.na(ID)) %>% select(ID,Date=DateP,Hummingbird,Plant=Iplant_Double,Time,Sex,piercing=Pierce,lon,lat,ele,waypoint=name)
 
 #convert to latin names
-get_latin<-comm2sci(levels(interactions_2013$Hummingbird),simplify = T)
+get_latin<-comm2sci(levels(interactions_2013$Hummingbird),simplify = T,db="itis")
 to_join<-data.frame(Hummingbird=names(get_latin),latin=sapply(get_latin,function(x) word(x,1,2)[[1]]))
 levels(to_join$latin)[levels(to_join$latin) %in% "Thalurania colombica"]<-"Thalurania fannyi"
 
@@ -59,4 +59,6 @@ pord<- ginteractions %>% distinct(Plant) %>% arrange(desc(Plant)) %>% .$Plant
 int_plot$Plant<-factor(int_plot$Plant,levels=pord)
 ggplot(int_plot,aes(x=Hummingbird,y=Plant,fill=n)) + geom_tile() + coord_flip()  + scale_fill_continuous(low="blue",high="red") + theme_bw()+ theme(axis.text.x = element_text(angle=-90))
 
+#Some english names were used earler on, clean those up.
+table(ginteractions$Hummingbird)
 write.csv(ginteractions,"data/cleaned/interactions_all.csv")
