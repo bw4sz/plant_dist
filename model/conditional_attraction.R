@@ -1,4 +1,4 @@
-sink("model/conditional.jags")
+sink("model/conditional_attraction.jags")
 cat("
     model {
     
@@ -50,9 +50,7 @@ cat("
     #########################
     
     #For each of observation
-    for(x in 1:Months){
-    rho[1:Plants,x] ~ dmnorm(zeros,tauC[,])
-    }
+    rho[1:Plants] ~ dmnorm(zeros,tauC[,])
     
     ##covariance among similar species
     for(i in 1:Plants){
@@ -63,15 +61,19 @@ cat("
     
     ## Covert variance to precision for each parameter, allow omega to shrink to identity matrix
     vCov = omega*C[,] + (1-omega) * I
-    tauC=inverse(vCov*gamma)
+    tauC = inverse(vCov*gamma)
     
-    for (j in 1:Plants){
+    #Autocorrelation priors
+    gamma  ~ dunif(1,5)
+    
+    #Strength of covariance decay
+    lambda_cov ~ dunif(1,5)
+    omega = 1
+
     #elevation occurrence priors
+    for (j in 1:Plants){
     alpha[j] ~ dnorm(0,0.386)
     beta[j] ~ dnorm(0,0.386)
-    
-    #Intercept flowering probability
-    rho[j] ~ dbeta(1,1)
     }
     
     }

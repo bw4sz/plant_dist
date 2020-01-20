@@ -45,7 +45,6 @@
 
     #Priors
 
-
     for (j in 1:Plants){
       #elevation occurrence priors
       alpha[j] ~ dnorm(0,0.386)
